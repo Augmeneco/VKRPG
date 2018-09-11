@@ -23,13 +23,15 @@ class VKRPG:
     def start(self):
         lanode.log_print('Инициализация плагинов...', 'info')
         for plugin in os.listdir('./plugins'):
-            exec(open(os.path.dirname(__file__) + '/plugins/' + plugin + '/main.py').read())
+            exec(open('./plugins/' + plugin + '/main.py').read())
         lanode.log_print('Инициализация плагинов завершена.', 'info')
 
         lanode.log_print('Запуск longpoll потока ...', 'info')
         thread_longpoll = threading.Thread(target=self.longpollserver)
         thread_longpoll.start()
         lanode.log_print('Longpoll поток запущен.', 'info')
+
+        print(self.commands.commands_list)
 
         while True:
             time.sleep(10/1000000.0)
@@ -38,11 +40,12 @@ class VKRPG:
                 update = self.updates_queue.get()
 
                 if update['type'] == 'message_new':
-                    for i,v in self.commands.commands_list.items():
-                        if re.match(v[0], update['object']['text'][3:]) != None:
-                            thread = threading.Thread(target=v[1], args=(update,))
-                            thread.setName(str(update['']))
+                    for k in list(self.commands.commands_list.items()):
+                        if re.match(self.commands.commands_list[k[0]][0], update['object']['text'][3:]) != None:
+                            thread = threading.Thread(target=self.commands.commands_list[k[0]][1], args=(update,))
+                            thread.setName(str(update['object']['id']))
                             thread.start()
+                            print(self.commands.commands_list)
 
     def longpollserver(self):
         def get_lp_server():
@@ -83,7 +86,7 @@ class VKRPG:
         def register_command(self, name, template, func):
             self.commands_list[name] = [template, func]
 
-        def unregister_plugin(self, name):
+        def unregister_command(self, name):
             del self.commands_list[name]
 
 
@@ -139,6 +142,6 @@ if __name__ == "__main__":
     try:
         vkrpg.start()
     except KeyboardInterrupt:
-        lanode.log_print('\b\bПолучен сигнал завершения. Завершаю работу!', 'info')
+        lanode.log_print('Получен сигнал завершения. Завершаю работу!', 'info')
         os._exit(0)
 
