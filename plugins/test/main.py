@@ -1,13 +1,13 @@
 class TestPlugin:
     def __init__(self):
-        self.os = __import__(os)
-        vkrpg.register_command('hello', self.hello)
+        self.os = __import__('os')
+        vkrpg.commands.register_command('hello', 'hello', self.hello)
     
     def hello(self):
-        vkrpg.register_command('huy a{3}', self.hello)
+        vkrpg.commands.register_command('huy', 'huy a{3}', self.hello)
     
     def bye(self):
-        vkrpg.unregister_command('huy a{3}')
+        vkrpg.commands.unregister_command('huy a{3}')
 
 
-vkrpg.register_plugin('test', TestPlugin())
+vkrpg.plugins.register_plugin('test', TestPlugin())

@@ -8,6 +8,7 @@ import postgresql
 import re
 import os
 
+print(os.path.dirname(__file__))
 
 TOKEN = 'fa11495759265b5b4c681fdb9cb063b5d7aba22c760406ac021592e4df3de8f7e3be3383c026495cbe3a5'
 
@@ -16,12 +17,13 @@ class VKRPG:
     updates_queue = queue.LifoQueue()
 
     def __init__(self):
-        pass
+        self.commands = self.Commands()
+        self.plugins = self.Plugins()
 
     def start(self):
         lanode.log_print('Инициализация плагинов...', 'info')
         for plugin in os.listdir('./plugins'):
-            exec(open('./' + plugin + '/main.py').read())
+            exec(open(os.path.dirname(__file__) + '/plugins/' + plugin + '/main.py').read())
         lanode.log_print('Инициализация плагинов завершена.', 'info')
 
         lanode.log_print('Запуск longpoll потока ...', 'info')
@@ -53,7 +55,7 @@ class VKRPG:
         lp_info = get_lp_server()
         while True:
             time.sleep(10 / 1000000.0)
-            lp_url = 'https://' + lp_info['server'] + '?act=a_check&key=' + lp_info['key'] + '&ts=' + \
+            lp_url = lp_info['server'] + '?act=a_check&key=' + lp_info['key'] + '&ts=' + \
                      str(lp_info['ts']) + '&wait=60'
             result = json.loads(requests.get(lp_url).text)
             try:
@@ -66,70 +68,70 @@ class VKRPG:
 
 
     class Plugins:
-        plugins = {}
+        plugins_list = {}
 
         def register_plugin(self, name, obj):
-            self.plugins[name] = obj
+            self.plugins_list[name] = obj
 
         def unregister_plugin(self, name):
-            del self.plugins[name]
+            del self.plugins_list[name]
 
 
     class Commands:
         commands_list = {}
 
         def register_command(self, name, template, func):
-            self.plugins[name] = [template, func]
+            self.commands_list[name] = [template, func]
 
         def unregister_plugin(self, name):
-            del self.plugins[name]
+            del self.commands_list[name]
 
 
-    class DB:
-        db = postgresql.open('pq://postgres:psql@127.0.0.1:5432/fatedb')
-        def __init__(self):
-            pass
-
-        def create(name, table, data):
-            conn = postgresql.driver.dbapi20.connect(name)
-            cursor = conn.cursor()
-            cursor.execute("""CREATE TABLE """ + table + """
-        				  (""" + data + """)
-        				""")
-            conn.commit()
-
-        def read(name, table, data):
-            conn = postgresql.driver.dbapi20.connect(name)
-            cursor = conn.cursor()
-            sql = "SELECT * FROM " + table + " WHERE " + data
-            cursor.execute(sql)
-            return cursor.fetchall()
-
-        def write(name, table, data):
-            conn = postgresql.driver.dbapi20.connect(name)
-            cursor = conn.cursor()
-            val = '(' + '?,' * len(data[0]) + ')'
-            val = val.replace(',)', ')')
-            cursor.executemany("INSERT INTO " + table + " VALUES " + val, data)
-            conn.commit()
-
-        def replace(name, table, where, setd):
-            conn = postgresql.driver.dbapi20.connect(name)
-            cursor = conn.cursor()
-            sql = """
-        UPDATE """ + table + """ 
-        SET """ + setd + """ 
-        WHERE """ + where
-            cursor.execute(sql)
-            conn.commit()
-
-        def remove(name, table, data):
-            conn = postgresql.driver.dbapi20.connect(name)
-            cursor = conn.cursor()
-            sql = "DELETE FROM " + table + " WHERE " + data
-            cursor.execute(sql)
-
-        conn.commit()
+    # class DB:
+    #     db = postgresql.open('pq://postgres:psql@127.0.0.1:5432/fatedb')
+    #     def __init__(self):
+    #         pass
+    #
+    #     def create(name, table, data):
+    #         conn = postgresql.driver.dbapi20.connect(name)
+    #         cursor = conn.cursor()
+    #         cursor.execute("""CREATE TABLE """ + table + """
+    #     				  (""" + data + """)
+    #     				""")
+    #         conn.commit()
+    #
+    #     def read(name, table, data):
+    #         conn = postgresql.driver.dbapi20.connect(name)
+    #         cursor = conn.cursor()
+    #         sql = "SELECT * FROM " + table + " WHERE " + data
+    #         cursor.execute(sql)
+    #         return cursor.fetchall()
+    #
+    #     def write(name, table, data):
+    #         conn = postgresql.driver.dbapi20.connect(name)
+    #         cursor = conn.cursor()
+    #         val = '(' + '?,' * len(data[0]) + ')'
+    #         val = val.replace(',)', ')')
+    #         cursor.executemany("INSERT INTO " + table + " VALUES " + val, data)
+    #         conn.commit()
+    #
+    #     def replace(name, table, where, setd):
+    #         conn = postgresql.driver.dbapi20.connect(name)
+    #         cursor = conn.cursor()
+    #         sql = """
+    #     UPDATE """ + table + """
+    #     SET """ + setd + """
+    #     WHERE """ + where
+    #         cursor.execute(sql)
+    #         conn.commit()
+    #
+    #     def remove(name, table, data):
+    #         conn = postgresql.driver.dbapi20.connect(name)
+    #         cursor = conn.cursor()
+    #         sql = "DELETE FROM " + table + " WHERE " + data
+    #         cursor.execute(sql)
+    #
+    #     conn.commit()
 
 
 if __name__ == "__main__":
