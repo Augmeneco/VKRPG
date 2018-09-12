@@ -4,7 +4,7 @@ import requests
 import threading
 import time
 import lanode
-import postgresql
+import psycopg2
 import re
 import os
 
@@ -19,6 +19,7 @@ class VKRPG:
     def __init__(self):
         self.commands = self.Commands()
         self.plugins = self.Plugins()
+        self.db = self.DB("dbname=fatedb user=postgres password=psql host=127.0.0.1")
 
     def start(self):
         lanode.log_print('Инициализация плагинов...', 'info')
@@ -90,51 +91,41 @@ class VKRPG:
             del self.commands_list[name]
 
 
-    # class DB:
-    #     db = postgresql.open('pq://postgres:psql@127.0.0.1:5432/fatedb')
-    #     def __init__(self):
-    #         pass
-    #
-    #     def create(name, table, data):
-    #         conn = postgresql.driver.dbapi20.connect(name)
-    #         cursor = conn.cursor()
-    #         cursor.execute("""CREATE TABLE """ + table + """
-    #     				  (""" + data + """)
-    #     				""")
-    #         conn.commit()
-    #
-    #     def read(name, table, data):
-    #         conn = postgresql.driver.dbapi20.connect(name)
-    #         cursor = conn.cursor()
-    #         sql = "SELECT * FROM " + table + " WHERE " + data
-    #         cursor.execute(sql)
-    #         return cursor.fetchall()
-    #
-    #     def write(name, table, data):
-    #         conn = postgresql.driver.dbapi20.connect(name)
-    #         cursor = conn.cursor()
-    #         val = '(' + '?,' * len(data[0]) + ')'
-    #         val = val.replace(',)', ')')
-    #         cursor.executemany("INSERT INTO " + table + " VALUES " + val, data)
-    #         conn.commit()
-    #
-    #     def replace(name, table, where, setd):
-    #         conn = postgresql.driver.dbapi20.connect(name)
-    #         cursor = conn.cursor()
-    #         sql = """
-    #     UPDATE """ + table + """
-    #     SET """ + setd + """
-    #     WHERE """ + where
-    #         cursor.execute(sql)
-    #         conn.commit()
-    #
-    #     def remove(name, table, data):
-    #         conn = postgresql.driver.dbapi20.connect(name)
-    #         cursor = conn.cursor()
-    #         sql = "DELETE FROM " + table + " WHERE " + data
-    #         cursor.execute(sql)
-    #
-    #     conn.commit()
+    class DB:
+        def __init__(self, conn_str):
+            self.conn = psycopg2.connect(conn_str)
+            self.cursor = self.conn.cursor()
+
+        def create(self, table, data):
+            self.cursor.execute("""CREATE TABLE """ + table + """
+        				  (""" + data + """)
+        				""")
+            self.conn.commit()
+
+        def read(self, table, data):
+            sql = "SELECT * FROM " + table + " WHERE " + data
+            self.cursor.execute(sql)
+            return self.cursor.fetchall()
+
+        def write(self, table, data):
+            val = '(' + '?,' * len(data[0]) + ')'
+            val = val.replace(',)', ')')
+            self.cursor.executemany("INSERT INTO " + table + " VALUES " + val, data)
+            self.conn.commit()
+
+        def replace(self, table, where, setd):
+            sql = """
+        UPDATE """ + table + """
+        SET """ + setd + """
+        WHERE """ + where
+            self.cursor.execute(sql)
+            self.conn.commit()
+
+        def remove(self, table, data):
+            sql = "DELETE FROM " + table + " WHERE " + data
+            self.cursor.execute(sql)
+
+            self.conn.commit()
 
 
 if __name__ == "__main__":
