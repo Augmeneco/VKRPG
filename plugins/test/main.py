@@ -4,8 +4,8 @@ class TestPlugin:
         self.commands = {'hello': {'tmplt': 'hello', 'perms': 'testplug.hello', 'func': self.hello},
                     'huy': {'tmplt': 'huy a{3}', 'perms': 'testplug', 'func': self.bye}}
     
-    def hello(self, update):
-        print('hello')
+    def hello(self, msg):
+        vkrpg.chat.apisay('ПРИВЕТ МИР!', msg['peer_id'], msg['id'])
     
     def bye(self, update):
         print('bye')

@@ -32,7 +32,7 @@ class VKRPG:
         for plugin in os.listdir('./plugins'):
             exec(open('./plugins/' + plugin + '/main.py').read())
 
-        for i,v in self.chat.commands_list.items():
+        for i,v in self.chat.cmds_list.items():
             perms_tree_node = self.perms.perms_tree
             for perm in v['perms'].split('.'):
                 if perm not in perms_tree_node['childs']:
@@ -47,7 +47,7 @@ class VKRPG:
         thread_longpoll.start()
         lanode.log_print('Longpoll поток запущен.', 'info')
 
-        print(self.chat.commands_list)
+        print(self.chat.cmds_list)
         print(self.perms.perms_tree)
 
         while True:
@@ -64,17 +64,28 @@ class VKRPG:
                     if res == []:
                         self.db.write('users', [(str(update['object']['from_id']), 'nickname', '{}', '{}', '{}')])
                         res = self.db.read('users', "id='" + str(update['object']['from_id']) + "'")
+
                     msg['db_acc'] = res[0]
-                    print(msg)
+
+                    if not any(re.match(x['tmplt'], msg['text'][len(PREFIX)+1:]) for x in self.chat.cmds_list.values()):
+                        self.chat.apisay('Такой команды не существует!', msg['peer_id'], msg['id'])
 
                     ### СДЕЛАТЬ ПРОВЕРКУ НА ПЕРМИШЕНСЫ!!!
+                    available_cmds = []
+                    for v in msg['db_acc'][3]:
+                        perms_tree_node = self.perms.perms_tree
+                        for perm in v.split('.'):
+                            perms_tree_node = perms_tree_node['childs'][perm]
+                        available_cmds.extend(perms_tree_node['cmds'])
+                    # https://stackoverflow.com/questions/3040716/python-elegant-way-to-check-if-at-least-one-regex-in-list-matches-a-string
+                    if not any(re.match(v['tmplt'], msg['text'][len(PREFIX)+1:]) for i,v in self.chat.cmds_list.items() if i in available_cmds):
+                        self.chat.apisay('У вас нету доступа к этой команде!', msg['peer_id'], msg['id'])
 
-                    for k,v in self.chat.commands_list.items():
-                        if re.match(self.chat.commands_list[k]['tmplt'], update['object']['text'][len(PREFIX)+1:]) != None:
-                            thread = threading.Thread(target=self.chat.commands_list[k]['func'], args=(msg,))
+                    for k,v in [(x,y) for x,y in self.chat.cmds_list.items() if x in available_cmds]:
+                        if re.match(self.chat.cmds_list[k]['tmplt'], update['object']['text'][len(PREFIX)+1:]) != None:
+                            thread = threading.Thread(target=self.chat.cmds_list[k]['func'], args=(msg,))
                             thread.setName(str(update['object']['id']))
                             thread.start()
-                            print(self.chat.commands_list)
 
     def longpollserver(self):
         def get_lp_server():
@@ -104,22 +115,22 @@ class VKRPG:
 
         def register_plugin(self, name, obj):
             self.plugins_list[name] = obj
-            vkrpg.chat.commands_list.update(obj.commands)
+            vkrpg.chat.cmds_list.update(obj.commands)
 
         # def unregister_plugin(self, name):
         #     del self.plugins_list[name]
 
 
     class Chat:
-        commands_list = {}
+        cmds_list = {}
 
         # def register_command(self, name, template, func):
-        #     self.commands_list[name] = [template, func]
+        #     self.cmds_list[name] = [template, func]
 
         # def unregister_command(self, name):
-        #     del self.commands_list[name]
+        #     del self.cmds_list[name]
 
-        def say(pic, mess, toho):
+        def say(self, pic, mess, toho):
             ret = requests.get(
                 'https://api.vk.com/method/photos.getMessagesUploadServer?access_token={access_token}&v=5.68'.format(
                     access_token=TOKEN)).json()
@@ -134,12 +145,12 @@ class VKRPG:
                 ret['response'][0]['id']) + '&message=' + mess + '&v=5.68&peer_id=' + str(
                 toho) + '&access_token=' + str(TOKEN))
 
-        def apisay(text, toho, torep):
+        def apisay(self, text, toho, torep):
             param = {'v': '5.68', 'peer_id': toho, 'access_token': TOKEN, 'message': text, 'forward_messages': torep}
             result = requests.post('https://api.vk.com/method/messages.send', data=param)
             return result.text
 
-        def sendpic(pic, mess, toho):
+        def sendpic(self, pic, mess, toho):
             ret = requests.get(
                 'https://api.vk.com/method/photos.getMessagesUploadServer?access_token={access_token}&v=5.68'.format(
                     access_token=TOKEN)).json()
