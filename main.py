@@ -70,8 +70,8 @@ class VKRPG:
                     ### СДЕЛАТЬ ПРОВЕРКУ НА ПЕРМИШЕНСЫ!!!
 
                     for k,v in self.chat.commands_list.items():
-                        if re.match(self.chat.commands_list[k]['tmplt'], update['object']['text'][len(PREFIX):]) != None:
-                            thread = threading.Thread(target=self.chat.commands_list[k]['func'], args=(update,))
+                        if re.match(self.chat.commands_list[k]['tmplt'], update['object']['text'][len(PREFIX)+1:]) != None:
+                            thread = threading.Thread(target=self.chat.commands_list[k]['func'], args=(msg,))
                             thread.setName(str(update['object']['id']))
                             thread.start()
                             print(self.chat.commands_list)
