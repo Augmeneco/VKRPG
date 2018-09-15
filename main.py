@@ -174,7 +174,7 @@ class VKRPG:
             context_list = {}
 
             def __init__(self):
-                self.create_context('default', ['hello'], 'blacklist')
+                self.create_context('default', [], 'blacklist')
 
             def create_context(self, name, cmds_list, cmds_mode='whitelist'):
                 self.context_list[name] = {'cmds_mode': cmds_mode, 'cmds_list': cmds_list}
