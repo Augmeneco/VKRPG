@@ -10,6 +10,7 @@ import re
 import os
 import html
 
+lanode.log_print('VKRPG v0.3 by Lanode (from Augmeneco)')
 
 print(os.path.dirname(__file__))
 
@@ -62,13 +63,14 @@ class VKRPG:
 
                     res = self.db.read('users', "id='"+str(update['object']['from_id'])+"'")
                     if res == []:
-                        self.db.write('users', [(str(update['object']['from_id']), 'nickname', '{}', '{}', '{}')])
+                        self.db.write('users', [(str(update['object']['from_id']), 'nickname', '{}', '{}', '{}', 'default')])
                         res = self.db.read('users', "id='" + str(update['object']['from_id']) + "'")
 
                     msg['db_acc'] = res[0]
 
                     if not any(re.match(x['tmplt'], msg['text'][len(PREFIX)+1:]) for x in self.chat.cmds_list.values()):
                         self.chat.apisay('Такой команды не существует!', msg['peer_id'], msg['id'])
+                        continue
 
                     ### СДЕЛАТЬ ПРОВЕРКУ НА ПЕРМИШЕНСЫ!!!
                     available_cmds = []
@@ -78,8 +80,28 @@ class VKRPG:
                             perms_tree_node = perms_tree_node['childs'][perm]
                         available_cmds.extend(perms_tree_node['cmds'])
                     # https://stackoverflow.com/questions/3040716/python-elegant-way-to-check-if-at-least-one-regex-in-list-matches-a-string
-                    if not any(re.match(v['tmplt'], msg['text'][len(PREFIX)+1:]) for i,v in self.chat.cmds_list.items() if i in available_cmds):
+
+                    if not any(
+                            re.match(v['tmplt'], msg['text'][len(PREFIX)+1:]) for i,v in self.chat.cmds_list.items()
+                            if i in available_cmds):
                         self.chat.apisay('У вас нету доступа к этой команде!', msg['peer_id'], msg['id'])
+                        continue
+
+                    context = self.chat.contexts.get_context(msg['from_id'])
+
+                    if context['cmds_mode'] == 'whitelist':
+                        if not any(
+                                re.match(v['tmplt'], msg['text'][len(PREFIX) + 1:]) for i, v in self.chat.cmds_list.items()
+                                if i in set(available_cmds)&set(context['cmds_list'])):
+                            self.chat.apisay('Вы не можете сейчас использовать эту команду!', msg['peer_id'], msg['id'])
+                            continue
+                    elif context['cmds_mode'] == 'blacklist':
+                        if not any(
+                                re.match(v['tmplt'], msg['text'][len(PREFIX) + 1:]) for i, v in self.chat.cmds_list.items()
+                                if i in set(available_cmds)-set(context['cmds_list'])):
+                            self.chat.apisay('Вы не можете сейчас использовать эту команду!', msg['peer_id'], msg['id'])
+                            continue
+
 
                     for k,v in [(x,y) for x,y in self.chat.cmds_list.items() if x in available_cmds]:
                         if re.match(self.chat.cmds_list[k]['tmplt'], update['object']['text'][len(PREFIX)+1:]) != None:
@@ -124,13 +146,16 @@ class VKRPG:
     class Chat:
         cmds_list = {}
 
+        def __init__(self):
+            self.contexts = self.Contexts()
+
         # def register_command(self, name, template, func):
         #     self.cmds_list[name] = [template, func]
 
         # def unregister_command(self, name):
         #     del self.cmds_list[name]
 
-        def say(self, pic, mess, toho):
+        def say(self, pic, mess, toho, torep):
             ret = requests.get(
                 'https://api.vk.com/method/photos.getMessagesUploadServer?access_token={access_token}&v=5.68'.format(
                     access_token=TOKEN)).json()
@@ -144,6 +169,26 @@ class VKRPG:
                 ret['response'][0]['owner_id']) + '_' + str(
                 ret['response'][0]['id']) + '&message=' + mess + '&v=5.68&peer_id=' + str(
                 toho) + '&access_token=' + str(TOKEN))
+
+        class Contexts:
+            context_list = {}
+
+            def __init__(self):
+                self.create_context('default', ['hello'], 'blacklist')
+
+            def create_context(self, name, cmds_list, cmds_mode='whitelist'):
+                self.context_list[name] = {'cmds_mode': cmds_mode, 'cmds_list': cmds_list}
+
+            def enable_context(self, vk_id, context_id):
+                vkrpg.db.replace('users', 'context='+context_id, 'id='+str(vk_id))
+
+            def get_context(self, vk_id):
+                res = vkrpg.db.read('users', 'id='+str(vk_id))
+                if res[0][5] in self.context_list:
+                    return self.context_list[res[0][5]]
+                else:
+                    return None
+
 
         def apisay(self, text, toho, torep):
             param = {'v': '5.68', 'peer_id': toho, 'access_token': TOKEN, 'message': text, 'forward_messages': torep}
