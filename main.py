@@ -4,7 +4,8 @@ import requests
 import threading
 import time
 import lanode
-import sqlite3
+import psycopg2
+import psycopg2.extras
 import re
 import os
 import html
@@ -17,8 +18,6 @@ TOKEN = 'fa11495759265b5b4c681fdb9cb063b5d7aba22c760406ac021592e4df3de8f7e3be338
 
 PREFIX = 'кб'
 
-DB_FILE = 'fatedb.db'
-
 
 class VKRPG:
     updates_queue = queue.LifoQueue()
@@ -27,7 +26,7 @@ class VKRPG:
         self.chat = self.Chat()
         self.plugins = self.Plugins()
         self.perms = self.Permissions()
-        self.db = self.DB(DB_FILE)
+        self.db = self.DB("dbname=fatedb user=postgres password=psql host=127.0.0.1")
 
     def start(self):
         lanode.log_print('Инициализация плагинов...', 'info')
@@ -75,7 +74,7 @@ class VKRPG:
 
                     ### СДЕЛАТЬ ПРОВЕРКУ НА ПЕРМИШЕНСЫ!!!
                     available_cmds = []
-                    for v in msg['db_acc']['permissions']:
+                    for v in msg['db_acc'][3]:
                         perms_tree_node = self.perms.perms_tree
                         for perm in v.split('.'):
                             perms_tree_node = perms_tree_node['childs'][perm]
@@ -105,7 +104,7 @@ class VKRPG:
 
 
                     for k,v in [(x,y) for x,y in self.chat.cmds_list.items() if x in available_cmds]:
-                        if re.match(self.chat.cmds_list[k]['tmplt'], update['object']['text'][len(PREFIX)+1:]) is not None:
+                        if re.match(self.chat.cmds_list[k]['tmplt'], update['object']['text'][len(PREFIX)+1:]) != None:
                             thread = threading.Thread(target=self.chat.cmds_list[k]['func'], args=(msg,))
                             thread.setName(str(update['object']['id']))
                             thread.start()
@@ -188,8 +187,8 @@ class VKRPG:
 
             def get_context(self, vk_id):
                 res = vkrpg.db.read('users', 'id='+str(vk_id))
-                if res[0]['context'] in self.context_list:
-                    return self.context_list[res[0]['context']]
+                if res[0][5] in self.context_list:
+                    return self.context_list[res[0][5]]
                 else:
                     return None
 
@@ -221,9 +220,8 @@ class VKRPG:
 
     class DB:
         def __init__(self, conn_str):
-            self.conn = sqlite3.connect(conn_str)
-            self.conn.row_factory = sqlite3.Row
-            self.cursor = self.conn.cursor()
+            self.conn = psycopg2.connect(conn_str)
+            self.cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
 
         def create(self, table, data):
             self.cursor.execute("""CREATE TABLE """ + table + """
