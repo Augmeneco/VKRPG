@@ -74,10 +74,21 @@ class VKRPG:
 
                     ### СДЕЛАТЬ ПРОВЕРКУ НА ПЕРМИШЕНСЫ!!!
                     available_cmds = []
-                    for v in msg['db_acc'][3]:
+                    for v in msg['db_acc']['permissions']:
                         perms_tree_node = self.perms.perms_tree
-                        for perm in v.split('.'):
+                        prev_perms_tree_node = perms_tree_node
+                        for idx, perm in enumerate(v.split('.')):
+                            if perm == '*':
+
+                                def perms_tree_search(perms_tree_node):
+                                    available_cmds.extend(perms_tree_node['cmds'])
+                                    for val in perms_tree_node['childs']:
+                                        perms_tree_search(perms_tree_node['childs'][val])
+
+                                perms_tree_search(prev_perms_tree_node)
+                                break
                             perms_tree_node = perms_tree_node['childs'][perm]
+                            prev_perms_tree_node = perms_tree_node
                         available_cmds.extend(perms_tree_node['cmds'])
                     # https://stackoverflow.com/questions/3040716/python-elegant-way-to-check-if-at-least-one-regex-in-list-matches-a-string
 
@@ -181,14 +192,13 @@ class VKRPG:
 
             def enable_context(self, vk_id, context_id):
                 res = vkrpg.db.read('users', 'id=' + str(vk_id))
-                save = json.loads(res['save'])
-                save['context'] = context_id
-                vkrpg.db.replace('users', "save='"+json.dumps(save)+"'", 'id='+str(vk_id))
+                res['save']['context'] = context_id
+                vkrpg.db.replace('users', "save='"+json.dumps(res['save'])+"'", 'id='+str(vk_id))
 
             def get_context(self, vk_id):
-                res = vkrpg.db.read('users', 'id='+str(vk_id))
-                if res[0][5] in self.context_list:
-                    return self.context_list[res[0][5]]
+                res = vkrpg.db.read('users', 'id='+str(vk_id))[0]
+                if res['save']['context'] in self.context_list:
+                    return self.context_list[res['save']['context']]
                 else:
                     return None
 
