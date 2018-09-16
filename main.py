@@ -64,7 +64,7 @@ class VKRPG:
 
                     res = self.db.read('users', "id='"+str(update['object']['from_id'])+"'")
                     if res == []:
-                        self.db.write('users', [(str(update['object']['from_id']), 'nickname', '{}', '{}', '{}', 'default')])
+                        self.db.write('users', [(str(update['object']['from_id']), 'nickname', '{}', '{}', '{"context":"default"}')])
                         res = self.db.read('users', "id='" + str(update['object']['from_id']) + "'")
 
                     msg['db_acc'] = res[0]
@@ -181,7 +181,10 @@ class VKRPG:
                 self.context_list[name] = {'cmds_mode': cmds_mode, 'cmds_list': cmds_list}
 
             def enable_context(self, vk_id, context_id):
-                vkrpg.db.replace('users', 'context='+context_id, 'id='+str(vk_id))
+                res = vkrpg.db.read('users', 'id=' + str(vk_id))
+                save = json.loads(res['save'])
+                save['context'] = context_id
+                vkrpg.db.replace('users', "save='"+json.dumps(save)+"'", 'id='+str(vk_id))
 
             def get_context(self, vk_id):
                 res = vkrpg.db.read('users', 'id='+str(vk_id))
