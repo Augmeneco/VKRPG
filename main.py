@@ -75,7 +75,7 @@ class VKRPG:
 
                     ### СДЕЛАТЬ ПРОВЕРКУ НА ПЕРМИШЕНСЫ!!!
                     available_cmds = []
-                    for v in msg['db_acc']['permissions']:
+                    for v in json.loads(msg['db_acc']['permissions']):
                         perms_tree_node = self.perms.perms_tree
                         for perm in v.split('.'):
                             perms_tree_node = perms_tree_node['childs'][perm]
