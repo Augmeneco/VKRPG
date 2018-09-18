@@ -7,10 +7,11 @@ import lanode
 import psycopg2
 import psycopg2.extras
 import re
+from datetime import datetime
 import os
 import html
 
-lanode.log_print('VKRPG v0.3 by Lanode (from Augmeneco)')
+lanode.log_print('VKRPG v0.4 by Lanode (from Augmeneco)')
 
 print(os.path.dirname(__file__))
 
@@ -18,28 +19,28 @@ TOKEN = 'fa11495759265b5b4c681fdb9cb063b5d7aba22c760406ac021592e4df3de8f7e3be338
 
 PREFIX = 'кб'
 
+USE_DB = True
+
 
 class VKRPG:
     updates_queue = queue.LifoQueue()
 
     def __init__(self):
         self.chat = self.Chat()
+        self.contexts = self.Contexts(self)
         self.plugins = self.Plugins()
-        self.perms = self.Permissions()
-        self.db = self.DB("dbname=fatedb user=postgres password=psql host=127.0.0.1")
+        self.events = self.Events()
+        if USE_DB is True:
+            self.db = self.DB("dbname=fatedb user=postgres password=psql host=127.0.0.1")
 
     def start(self):
         lanode.log_print('Инициализация плагинов...', 'info')
         for plugin in os.listdir('./plugins'):
             exec(open('./plugins/' + plugin + '/main.py').read())
 
-        for i,v in self.chat.cmds_list.items():
-            perms_tree_node = self.perms.perms_tree
-            for perm in v['perms'].split('.'):
-                if perm not in perms_tree_node['childs']:
-                    perms_tree_node['childs'][perm] = {'childs':{}, 'cmds':[]}
-                perms_tree_node = perms_tree_node['childs'][perm]
-            perms_tree_node['cmds'].append(i)
+        for plugin in vkrpg.plugins.plugins_list.values():
+            if hasattr(plugin, 'on_load'):
+                plugin.on_load()
 
         lanode.log_print('Инициализация плагинов завершена.', 'info')
 
@@ -58,63 +59,58 @@ class VKRPG:
                 update = self.updates_queue.get()
 
                 if update['type'] == 'message_new':
+                    for f in vkrpg.events.on_message:
+                        f(update)
+
                     msg = update['object']
                     msg['text'] = html.unescape(msg['text'])
 
-                    res = self.db.read('users', "id='"+str(update['object']['from_id'])+"'")
-                    if res == []:
-                        self.db.write('users', [(str(update['object']['from_id']), 'nickname', '{}', '{}', '{"context":"default"}')])
-                        res = self.db.read('users', "id='" + str(update['object']['from_id']) + "'")
+                    if not hasattr(vkrpg, 'db'):
+                        res = self.db.read('users', "id='"+str(update['object']['from_id'])+"'")
+                        if res == []:
+                            self.db.write('users', [(str(update['object']['from_id']), '%username%', '{}', '{}', '{"context":"default"}')])
+                            res = self.db.read('users', "id='" + str(update['object']['from_id']) + "'")
 
-                    msg['db_acc'] = res[0]
+                        msg['db_acc'] = res[0]
+                    else:
+                        if msg['from_id'] in self.contexts.context_list:
+                            self.contexts.enable_context(msg['from_id'], 'default')
+
+                    lanode.log_print('(CmdID: ' + str(msg['id']) + ') Получено. '
+                                      '{SndTime: ' + datetime.fromtimestamp(msg['date']).strftime('%Y.%m.%d %H:%M:%S') + ','
+                                      ' Chat: ' + str(msg['peer_id']) + ','
+                                      ' From: ' + str(msg['from_id']) + ','
+                                      ' Text: "' + msg['text'] + '"}',
+                                      'info')
 
                     if not any(re.match(x['tmplt'], msg['text'][len(PREFIX)+1:]) for x in self.chat.cmds_list.values()):
                         self.chat.apisay('Такой команды не существует!', msg['peer_id'], msg['id'])
                         continue
 
-                    ### СДЕЛАТЬ ПРОВЕРКУ НА ПЕРМИШЕНСЫ!!!
-                    available_cmds = []
-                    for v in msg['db_acc']['permissions']:
-                        perms_tree_node = self.perms.perms_tree
-                        prev_perms_tree_node = perms_tree_node
-                        for idx, perm in enumerate(v.split('.')):
-                            if perm == '*':
-
-                                def perms_tree_search(perms_tree_node):
-                                    available_cmds.extend(perms_tree_node['cmds'])
-                                    for val in perms_tree_node['childs']:
-                                        perms_tree_search(perms_tree_node['childs'][val])
-
-                                perms_tree_search(prev_perms_tree_node)
-                                break
-                            perms_tree_node = perms_tree_node['childs'][perm]
-                            prev_perms_tree_node = perms_tree_node
-                        available_cmds.extend(perms_tree_node['cmds'])
-                    # https://stackoverflow.com/questions/3040716/python-elegant-way-to-check-if-at-least-one-regex-in-list-matches-a-string
-
-                    if not any(
-                            re.match(v['tmplt'], msg['text'][len(PREFIX)+1:]) for i,v in self.chat.cmds_list.items()
-                            if i in available_cmds):
-                        self.chat.apisay('У вас нету доступа к этой команде!', msg['peer_id'], msg['id'])
-                        continue
-
-                    context = self.chat.contexts.get_context(msg['from_id'])
+                    context = self.contexts.get_context(msg['from_id'])
 
                     if context['cmds_mode'] == 'whitelist':
                         if not any(
                                 re.match(v['tmplt'], msg['text'][len(PREFIX) + 1:]) for i, v in self.chat.cmds_list.items()
-                                if i in set(available_cmds)&set(context['cmds_list'])):
+                                if i in context['cmds_list']):
                             self.chat.apisay('Вы не можете сейчас использовать эту команду!', msg['peer_id'], msg['id'])
                             continue
                     elif context['cmds_mode'] == 'blacklist':
                         if not any(
                                 re.match(v['tmplt'], msg['text'][len(PREFIX) + 1:]) for i, v in self.chat.cmds_list.items()
-                                if i in set(available_cmds)-set(context['cmds_list'])):
+                                if i not in context['cmds_list']):
                             self.chat.apisay('Вы не можете сейчас использовать эту команду!', msg['peer_id'], msg['id'])
                             continue
 
+                    for f in vkrpg.events.on_preparemessage:
+                        msg = f()
+                        if msg == False:
+                            break
 
-                    for k,v in [(x,y) for x,y in self.chat.cmds_list.items() if x in available_cmds]:
+                    if msg == False:
+                        continue
+
+                    for k,v in self.chat.cmds_list.items():
                         if re.match(self.chat.cmds_list[k]['tmplt'], update['object']['text'][len(PREFIX)+1:]) != None:
                             thread = threading.Thread(target=self.chat.cmds_list[k]['func'], args=(msg,))
                             thread.setName(str(update['object']['id']))
@@ -148,17 +144,27 @@ class VKRPG:
 
         def register_plugin(self, name, obj):
             self.plugins_list[name] = obj
-            vkrpg.chat.cmds_list.update(obj.commands)
+            if hasattr(obj, 'commands'):
+                vkrpg.chat.cmds_list.update(obj.commands)
 
         # def unregister_plugin(self, name):
         #     del self.plugins_list[name]
+
+
+    class Events:
+        on_message = []
+        on_preparemessage = []
+
+        def execute(self, event):
+            for f in vars(self):
+                f()
 
 
     class Chat:
         cmds_list = {}
 
         def __init__(self):
-            self.contexts = self.Contexts()
+            pass
 
         # def register_command(self, name, template, func):
         #     self.cmds_list[name] = [template, func]
@@ -181,28 +187,6 @@ class VKRPG:
                 ret['response'][0]['id']) + '&message=' + mess + '&v=5.68&peer_id=' + str(
                 toho) + '&access_token=' + str(TOKEN))
 
-        class Contexts:
-            context_list = {}
-
-            def __init__(self):
-                self.create_context('default', [], 'blacklist')
-
-            def create_context(self, name, cmds_list, cmds_mode='whitelist'):
-                self.context_list[name] = {'cmds_mode': cmds_mode, 'cmds_list': cmds_list}
-
-            def enable_context(self, vk_id, context_id):
-                res = vkrpg.db.read('users', 'id=' + str(vk_id))
-                res['save']['context'] = context_id
-                vkrpg.db.replace('users', "save='"+json.dumps(res['save'])+"'", 'id='+str(vk_id))
-
-            def get_context(self, vk_id):
-                res = vkrpg.db.read('users', 'id='+str(vk_id))[0]
-                if res['save']['context'] in self.context_list:
-                    return self.context_list[res['save']['context']]
-                else:
-                    return None
-
-
         def apisay(self, text, toho, torep):
             param = {'v': '5.68', 'peer_id': toho, 'access_token': TOKEN, 'message': text, 'forward_messages': torep}
             result = requests.post('https://api.vk.com/method/messages.send', data=param)
@@ -223,10 +207,37 @@ class VKRPG:
                 ret['response'][0]['id']) + '&message=' + mess + '&v=5.68&peer_id=' + str(
                 toho) + '&access_token=' + str(TOKEN))
 
+    class Contexts:
+        context_list = {}
 
-    class Permissions:
-        perms_tree = {'childs':{}, 'cmds': []}
+        def __init__(self, vkrpg):
+            self.create_context('default', [], 'blacklist')
+            if not hasattr(vkrpg, 'db'):
+                self.users_contexts = {}
 
+        def create_context(self, name, cmds_list, cmds_mode='whitelist'):
+            self.context_list[name] = {'cmds_mode': cmds_mode, 'cmds_list': cmds_list}
+
+        def enable_context(self, vk_id, context_id):
+            if hasattr(vkrpg, 'db'):
+                res = vkrpg.db.read('users', 'id=' + str(vk_id))
+                res['save']['context'] = context_id
+                vkrpg.db.replace('users', "save='" + json.dumps(res['save']) + "'", 'id=' + str(vk_id))
+            else:
+                self.users_contexts[vk_id] = context_id
+
+        def get_context(self, vk_id):
+            if hasattr(vkrpg, 'db'):
+                res = vkrpg.db.read('users', 'id=' + str(vk_id))[0]
+                if res['save']['context'] in self.context_list:
+                    return self.context_list[res['save']['context']]
+                else:
+                    return None
+            else:
+                if vk_id in self.users_contexts:
+                    return self.users_contexts[vk_id]
+                else:
+                    return None
 
     class DB:
         def __init__(self, conn_str):
