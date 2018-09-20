@@ -59,11 +59,27 @@ class VKRPG:
                 update = self.updates_queue.get()
 
                 if update['type'] == 'message_new':
-                    for f in vkrpg.events.on_message:
-                        f(update)
+                    self.events.execute_event('on_message')
 
                     msg = update['object']
+
+                    if (msg['peer_id'] > 0) and (msg['peer_id'] < 200000000):
+                        chat_type = 'private'
+                    elif (msg['peer_id'] > 0) and (msg['peer_id'] > 200000000):
+                        chat_type = 'dialog'
+                    elif msg['peer_id'] < 0:
+                        chat_type = 'group_private'
+
+                    msg['chat_type'] = chat_type
                     msg['text'] = html.unescape(msg['text'])
+
+                    if msg['chat_type'] == 'dialog':
+                        if msg['text'].split(' ')[0] in ('кб', 'kb'):
+                            msg['pure_text'] = ' '.join(msg['text'].split(' ')[1:])
+                        else:
+                            continue
+                    else:
+                        msg['pure_text'] = msg['text']
 
                     if not hasattr(vkrpg, 'db'):
                         res = self.db.read('users', "id='"+str(update['object']['from_id'])+"'")
@@ -83,7 +99,7 @@ class VKRPG:
                                       ' Text: "' + msg['text'] + '"}',
                                       'info')
 
-                    if not any(re.match(x['tmplt'], msg['text'][len(PREFIX)+1:]) for x in self.chat.cmds_list.values()):
+                    if not any(re.match(x['tmplt'], msg['pure_text']) for x in self.chat.cmds_list.values()):
                         self.chat.apisay('Такой команды не существует!', msg['peer_id'], msg['id'])
                         continue
 
@@ -91,29 +107,25 @@ class VKRPG:
 
                     if context['cmds_mode'] == 'whitelist':
                         if not any(
-                                re.match(v['tmplt'], msg['text'][len(PREFIX) + 1:]) for i, v in self.chat.cmds_list.items()
+                                re.match(v['tmplt'], msg['pure_text']) for i, v in self.chat.cmds_list.items()
                                 if i in context['cmds_list']):
                             self.chat.apisay('Вы не можете сейчас использовать эту команду!', msg['peer_id'], msg['id'])
                             continue
                     elif context['cmds_mode'] == 'blacklist':
                         if not any(
-                                re.match(v['tmplt'], msg['text'][len(PREFIX) + 1:]) for i, v in self.chat.cmds_list.items()
+                                re.match(v['tmplt'], msg['pure_text']) for i, v in self.chat.cmds_list.items()
                                 if i not in context['cmds_list']):
                             self.chat.apisay('Вы не можете сейчас использовать эту команду!', msg['peer_id'], msg['id'])
                             continue
 
-                    for f in vkrpg.events.on_preparemessage:
-                        msg = f()
-                        if msg == False:
-                            break
-
-                    if msg == False:
+                    results = self.events.execute_event('on_message')
+                    if any(results):
                         continue
 
                     for k,v in self.chat.cmds_list.items():
-                        if re.match(self.chat.cmds_list[k]['tmplt'], update['object']['text'][len(PREFIX)+1:]) != None:
+                        if re.match(self.chat.cmds_list[k]['tmplt'], msg['pure_text']) != None:
                             thread = threading.Thread(target=self.chat.cmds_list[k]['func'], args=(msg,))
-                            thread.setName(str(update['object']['id']))
+                            thread.setName(str(msg['id']))
                             thread.start()
 
     def longpollserver(self):
@@ -152,12 +164,31 @@ class VKRPG:
 
 
     class Events:
-        on_message = []
-        on_preparemessage = []
+        def __init__(self):
+            self.on_message = []
+            self.on_preparemessage = []
 
-        def execute(self, event):
-            for f in vars(self):
-                f()
+        def execute_event(self, event):
+            results = []
+            for f in vars(self)[event]:
+                results.append(f())
+            return results
+
+        def add_event(self, event, f):
+            vars(self)[event].append({'func':f, 'used':False})
+
+        def remove_event(self, event, f):
+            ev_obj = list(filter(lambda x: x['func'] == f, vars(self)[event]))[0]
+            vars(self)[event].remove(ev_obj)
+
+        def add_event_wait(self, event, f):
+            ev_obj = {'func':f, 'used':False}
+            vars(self)[event].append(ev_obj)
+            idx = vars(self)[event].index(ev_obj)
+            while vars(self)[event][idx]['used'] is not True:
+                time.sleep(10 / 1000000.0)
+            vars(self)[event].remove(ev_obj)
+
 
 
     class Chat:

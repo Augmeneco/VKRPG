@@ -37,7 +37,7 @@ class KBotPermissionsPlugin:
             # https://stackoverflow.com/questions/3040716/python-elegant-way-to-check-if-at-least-one-regex-in-list-matches-a-string
 
             if not any(
-                    re.match(v['tmplt'], msg['text'][len(PREFIX) + 1:]) for i, v in self.chat.cmds_list.items()
+                    re.match(v['tmplt'], msg['pure_text']) for i, v in self.chat.cmds_list.items()
                     if i in available_cmds):
                 vkrpg.chat.apisay('У вас нету доступа к этой команде!', msg['peer_id'], msg['id'])
                 return False
