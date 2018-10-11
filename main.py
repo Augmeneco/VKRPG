@@ -56,6 +56,14 @@ class VKRPG:
 
                 if update['type'] == 'message_new':
                     msg = update['object']
+
+                    lanode.log_print('(CmdID: ' + str(msg['id']) + ') Получено. '
+                                      '{SndTime: ' + datetime.fromtimestamp(msg['date']).strftime('%Y.%m.%d %H:%M:%S') + ','
+                                      ' Chat: ' + str(msg['peer_id']) + ','
+                                      ' From: ' + str(msg['from_id']) + ','
+                                      ' Text: "' + msg['text'] + '"}',
+                                      'info')
+
                     if not hasattr(vkrpg, 'db'):
                         res = self.db.read('users', "id='"+str(update['object']['from_id'])+"'")
                         if res == []:
@@ -89,13 +97,6 @@ class VKRPG:
                             continue
                     else:
                         msg['pure_text'] = msg['text']
-
-                    lanode.log_print('(CmdID: ' + str(msg['id']) + ') Получено. '
-                                      '{SndTime: ' + datetime.fromtimestamp(msg['date']).strftime('%Y.%m.%d %H:%M:%S') + ','
-                                      ' Chat: ' + str(msg['peer_id']) + ','
-                                      ' From: ' + str(msg['from_id']) + ','
-                                      ' Text: "' + msg['text'] + '"}',
-                                      'info')
 
                     # if not any(re.match(x['tmplt'], msg['pure_text']) for x in self.chat.cmds_list.values()):
                     #     self.chat.apisay('Такой команды не существует!', msg['peer_id'], msg['id'])
@@ -187,6 +188,14 @@ class VKRPG:
         scanning_users = {}
 
         def scan(self, vkid):
+            self.scanning_users[vkid] = queue.Queue()
+            while True:
+                time.sleep(10 / 1000000.0)
+                if vkid in self.scanning_users:
+                    if not self.scanning_users[vkid].empty():
+                        return self.scanning_users[vkid].get()
+
+        def start_scan(self, vkid):
             self.scanning_users[vkid] = queue.Queue()
             while True:
                 time.sleep(10 / 1000000.0)
