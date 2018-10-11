@@ -23,7 +23,7 @@ USE_DB = True
 
 
 class VKRPG:
-    updates_queue = queue.LifoQueue()
+    updates_queue = queue.Queue()
 
     def __init__(self):
         self.chat = self.Chat()
@@ -38,9 +38,8 @@ class VKRPG:
         for plugin in os.listdir('./plugins'):
             exec(open('./plugins/' + plugin + '/main.py').read())
 
-        for plugin in vkrpg.plugins.plugins_list.values():
-            if hasattr(plugin, 'on_load'):
-                plugin.on_load()
+        for f in self.events.get_events('on_load'):
+            f()
 
         lanode.log_print('Инициализация плагинов завершена.', 'info')
 
@@ -49,9 +48,6 @@ class VKRPG:
         thread_longpoll.start()
         lanode.log_print('Longpoll поток запущен.', 'info')
 
-        print(self.chat.cmds_list)
-        print(self.perms.perms_tree)
-
         while True:
             time.sleep(10/1000000.0)
 
@@ -59,13 +55,26 @@ class VKRPG:
                 update = self.updates_queue.get()
 
                 if update['type'] == 'message_new':
-                    self.events.execute_event('on_message')
-
                     msg = update['object']
+                    if not hasattr(vkrpg, 'db'):
+                        res = self.db.read('users', "id='"+str(update['object']['from_id'])+"'")
+                        if res == []:
+                            self.db.write('users', [(str(update['object']['from_id']), '%username%', '{}', '{}', '{"context":"default"}')])
+                            res = self.db.read('users', "id='" + str(update['object']['from_id']) + "'")
 
-                    if (msg['peer_id'] > 0) and (msg['peer_id'] < 200000000):
+                        msg['db_acc'] = res[0]
+                    else:
+                        if msg['from_id'] in self.contexts.users_contexts:
+                            self.contexts.enable_context(msg['from_id'], 'default')
+
+                    msg['context'] = self.contexts.get_context(msg['from_id'])
+
+                    for f in self.events.get_events('on_rawmessage'):
+                        f(update)
+
+                    if (msg['peer_id'] > 0) and (msg['peer_id'] < 2000000000):
                         chat_type = 'private'
-                    elif (msg['peer_id'] > 0) and (msg['peer_id'] > 200000000):
+                    elif (msg['peer_id'] > 0) and (msg['peer_id'] > 2000000000):
                         chat_type = 'dialog'
                     elif msg['peer_id'] < 0:
                         chat_type = 'group_private'
@@ -81,17 +90,6 @@ class VKRPG:
                     else:
                         msg['pure_text'] = msg['text']
 
-                    if not hasattr(vkrpg, 'db'):
-                        res = self.db.read('users', "id='"+str(update['object']['from_id'])+"'")
-                        if res == []:
-                            self.db.write('users', [(str(update['object']['from_id']), '%username%', '{}', '{}', '{"context":"default"}')])
-                            res = self.db.read('users', "id='" + str(update['object']['from_id']) + "'")
-
-                        msg['db_acc'] = res[0]
-                    else:
-                        if msg['from_id'] in self.contexts.context_list:
-                            self.contexts.enable_context(msg['from_id'], 'default')
-
                     lanode.log_print('(CmdID: ' + str(msg['id']) + ') Получено. '
                                       '{SndTime: ' + datetime.fromtimestamp(msg['date']).strftime('%Y.%m.%d %H:%M:%S') + ','
                                       ' Chat: ' + str(msg['peer_id']) + ','
@@ -99,32 +97,20 @@ class VKRPG:
                                       ' Text: "' + msg['text'] + '"}',
                                       'info')
 
-                    if not any(re.match(x['tmplt'], msg['pure_text']) for x in self.chat.cmds_list.values()):
-                        self.chat.apisay('Такой команды не существует!', msg['peer_id'], msg['id'])
-                        continue
+                    # if not any(re.match(x['tmplt'], msg['pure_text']) for x in self.chat.cmds_list.values()):
+                    #     self.chat.apisay('Такой команды не существует!', msg['peer_id'], msg['id'])
+                    #     continue
 
-                    context = self.contexts.get_context(msg['from_id'])
-
-                    if context['cmds_mode'] == 'whitelist':
-                        if not any(
-                                re.match(v['tmplt'], msg['pure_text']) for i, v in self.chat.cmds_list.items()
-                                if i in context['cmds_list']):
-                            self.chat.apisay('Вы не можете сейчас использовать эту команду!', msg['peer_id'], msg['id'])
-                            continue
-                    elif context['cmds_mode'] == 'blacklist':
-                        if not any(
-                                re.match(v['tmplt'], msg['pure_text']) for i, v in self.chat.cmds_list.items()
-                                if i not in context['cmds_list']):
-                            self.chat.apisay('Вы не можете сейчас использовать эту команду!', msg['peer_id'], msg['id'])
+                    for f in self.events.get_events('on_preparemessage'):
+                        msg = f(msg)
+                        if msg is False:
                             continue
 
-                    results = self.events.execute_event('on_message')
-                    if any(results):
-                        continue
-
-                    for k,v in self.chat.cmds_list.items():
-                        if re.match(self.chat.cmds_list[k]['tmplt'], msg['pure_text']) != None:
-                            thread = threading.Thread(target=self.chat.cmds_list[k]['func'], args=(msg,))
+                    if msg['from_id'] in self.chat.scanning_users:
+                        self.chat.scanning_users[msg['from_id']].put(msg)
+                    else:
+                        for f in self.events.get_events('on_message'):
+                            thread = threading.Thread(target=f, args=(msg,))
                             thread.setName(str(msg['id']))
                             thread.start()
 
@@ -156,8 +142,6 @@ class VKRPG:
 
         def register_plugin(self, name, obj):
             self.plugins_list[name] = obj
-            if hasattr(obj, 'commands'):
-                vkrpg.chat.cmds_list.update(obj.commands)
 
         # def unregister_plugin(self, name):
         #     del self.plugins_list[name]
@@ -165,45 +149,57 @@ class VKRPG:
 
     class Events:
         def __init__(self):
-            self.on_message = []
-            self.on_preparemessage = []
+            self.events = {'on_message': [],
+                           'on_rawmessage': [],
+                           'on_preparemessage': [],
+                           'on_load': []}
 
-        def execute_event(self, event):
-            results = []
-            for f in vars(self)[event]:
-                results.append(f())
-            return results
+        # def execute_event(self, event):
+        #     results = []
+        #     for f in vars(self)[event]:
+        #         results.append(f())
+        #     return results
 
         def add_event(self, event, f):
-            vars(self)[event].append({'func':f, 'used':False})
+            self.events[event].append(f)
 
         def remove_event(self, event, f):
-            ev_obj = list(filter(lambda x: x['func'] == f, vars(self)[event]))[0]
-            vars(self)[event].remove(ev_obj)
+            self.events[event].remove(f)
 
-        def add_event_wait(self, event, f):
-            ev_obj = {'func':f, 'used':False}
-            vars(self)[event].append(ev_obj)
-            idx = vars(self)[event].index(ev_obj)
-            while vars(self)[event][idx]['used'] is not True:
-                time.sleep(10 / 1000000.0)
-            vars(self)[event].remove(ev_obj)
+        def get_events(self, event, context='default'):
+            if context == 'default':
+                return self.events[event]
+            else:
+                return vkrpg.contexts.context_list[context]['events'][event]
 
+        # def longpoll(self, lp_event=None):
+        #     if lp_event == None:
+        #         pass
+
+        def set_context_event(self, context, event, func):
+            vkrpg.contexts.context_list[context]['events'][event] = func
+
+        def unset_context_event(self, context, event):
+            del vkrpg.contexts.context_list[context]['events'][event]
 
 
     class Chat:
-        cmds_list = {}
+        scanning_users = {}
 
-        def __init__(self):
-            pass
+        def scan(self, vkid):
+            self.scanning_users[vkid] = queue.Queue()
+            while True:
+                time.sleep(10 / 1000000.0)
+                if vkid in self.scanning_users:
+                    if not self.scanning_users[vkid].empty():
+                        yield self.scanning_users[vkid].get()
+                else:
+                    return
 
-        # def register_command(self, name, template, func):
-        #     self.cmds_list[name] = [template, func]
+        def stop_scan(self, vkid):
+            del self.scanning_users[vkid]
 
-        # def unregister_command(self, name):
-        #     del self.cmds_list[name]
-
-        def say(self, pic, mess, toho, torep):
+        def print(self, pic, mess, toho, torep):
             ret = requests.get(
                 'https://api.vk.com/method/photos.getMessagesUploadServer?access_token={access_token}&v=5.68'.format(
                     access_token=TOKEN)).json()
@@ -242,12 +238,12 @@ class VKRPG:
         context_list = {}
 
         def __init__(self, vkrpg):
-            self.create_context('default', [], 'blacklist')
+            self.create_context('default', {'events':{}})
             if not hasattr(vkrpg, 'db'):
                 self.users_contexts = {}
 
-        def create_context(self, name, cmds_list, cmds_mode='whitelist'):
-            self.context_list[name] = {'cmds_mode': cmds_mode, 'cmds_list': cmds_list}
+        def create_context(self, name, cont_obj):
+            self.context_list[name] = cont_obj
 
         def enable_context(self, vk_id, context_id):
             if hasattr(vkrpg, 'db'):

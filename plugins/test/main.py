@@ -1,14 +1,13 @@
 class TestPlugin:
     def __init__(self):
         self.os = __import__('os')
-        self.commands = {'hello': {'tmplt': 'hello', 'perms': 'testplug.hello', 'func': self.hello},
-                    'huy': {'tmplt': 'huy a{3}', 'perms': 'testplug', 'func': self.bye}}
+        vkrpg.events.add_event('on_message', self.hello)
     
     def hello(self, msg):
-        vkrpg.chat.apisay('ПРИВЕТ МИР!', msg['peer_id'], msg['id'])
-    
-    def bye(self, update):
-        print('bye')
-
+        vkrpg.chat.apisay('ПРИВЕТ МИР! Напиши своё имя:', msg['peer_id'], msg['id'])
+        for msg in vkrpg.chat.scan(msg['from_id']):
+            name = msg['text']
+            vkrpg.chat.stop_scan(msg['from_id'])
+        vkrpg.chat.apisay('Привет, ' + name + '!', msg['peer_id'], msg['id'])
 
 vkrpg.plugins.register_plugin('test', TestPlugin())
