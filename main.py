@@ -35,11 +35,13 @@ class VKRPG:
 
     def start(self):
         lanode.log_print('Инициализация плагинов...', 'info')
-        for plugin in os.listdir('./plugins'):
-            exec(open('./plugins/' + plugin + '/main.py').read())
+        for script in filter(lambda x: x.split('.')[-1] == 'py', os.listdir('./scripts')):
+            exec(open('./scripts/' + script).read())
 
         for f in self.events.get_events('on_load'):
             f()
+
+        print(self.contexts.context_list)
 
         lanode.log_print('Инициализация плагинов завершена.', 'info')
 
@@ -57,27 +59,27 @@ class VKRPG:
                 if update['type'] == 'message_new':
                     msg = update['object']
 
-                    lanode.log_print('(CmdID: ' + str(msg['id']) + ') Получено. '
+                    lanode.log_print('(MsgID: ' + str(msg['id']) + ') Получено. '
                                       '{SndTime: ' + datetime.fromtimestamp(msg['date']).strftime('%Y.%m.%d %H:%M:%S') + ','
                                       ' Chat: ' + str(msg['peer_id']) + ','
                                       ' From: ' + str(msg['from_id']) + ','
                                       ' Text: "' + msg['text'] + '"}',
                                       'info')
 
-                    if not hasattr(vkrpg, 'db'):
+                    if hasattr(vkrpg, 'db'):
                         res = self.db.read('users', "id='"+str(update['object']['from_id'])+"'")
                         if res == []:
-                            self.db.write('users', [(str(update['object']['from_id']), '%username%', '{}', '{}', '{"context":"default"}')])
+                            self.db.write('users', [(str(update['object']['from_id']), '{}', '{"context":"default","inventory":[],"servants":{}}')])
                             res = self.db.read('users', "id='" + str(update['object']['from_id']) + "'")
 
-                        msg['db_acc'] = res[0]
+                        msg['db'] = res[0]
                     else:
                         if msg['from_id'] in self.contexts.users_contexts:
                             self.contexts.enable_context(msg['from_id'], 'default')
 
                     msg['context'] = self.contexts.get_context(msg['from_id'])
 
-                    for f in self.events.get_events('on_rawmessage'):
+                    for f in self.events.get_events('on_rawmessage', msg['context']):
                         f(update)
 
                     if (msg['peer_id'] > 0) and (msg['peer_id'] < 2000000000):
@@ -92,7 +94,7 @@ class VKRPG:
 
                     if msg['chat_type'] == 'dialog':
                         if msg['text'].split(' ')[0] in ('кб', 'kb'):
-                            msg['pure_text'] = ' '.join(msg['text'].split(' ')[1:])
+                            msg['pure_text'] = ' '.join(msg['text'].split(' ')[1:]).lower()
                         else:
                             continue
                     else:
@@ -102,15 +104,16 @@ class VKRPG:
                     #     self.chat.apisay('Такой команды не существует!', msg['peer_id'], msg['id'])
                     #     continue
 
-                    for f in self.events.get_events('on_preparemessage'):
+                    for f in self.events.get_events('on_preparemessage', msg['context']):
                         msg = f(msg)
                         if msg is False:
                             continue
 
                     if msg['from_id'] in self.chat.scanning_users:
-                        self.chat.scanning_users[msg['from_id']].put(msg)
+                        for q in self.chat.scanning_users[msg['from_id']].values():
+                            q.put(msg)
                     else:
-                        for f in self.events.get_events('on_message'):
+                        for f in self.events.get_events('on_message', msg['context']):
                             thread = threading.Thread(target=f, args=(msg,))
                             thread.setName(str(msg['id']))
                             thread.start()
@@ -149,72 +152,69 @@ class VKRPG:
 
 
     class Events:
-        def __init__(self):
-            self.events = {'on_message': [],
-                           'on_rawmessage': [],
-                           'on_preparemessage': [],
-                           'on_load': []}
-
         # def execute_event(self, event):
         #     results = []
         #     for f in vars(self)[event]:
         #         results.append(f())
         #     return results
 
-        def add_event(self, event, f):
-            self.events[event].append(f)
+        def add_event(self, event, f, context='default'):
+            vkrpg.contexts.context_list[context]['events'][event].append(f)
 
-        def remove_event(self, event, f):
-            self.events[event].remove(f)
+        def remove_event(self, event, f, context='default'):
+            vkrpg.contexts.context_list[context]['events'][event].remove(f)
 
         def get_events(self, event, context='default'):
-            if context == 'default':
-                return self.events[event]
-            else:
-                return vkrpg.contexts.context_list[context]['events'][event]
+            return vkrpg.contexts.context_list[context]['events'][event]
 
         # def longpoll(self, lp_event=None):
         #     if lp_event == None:
         #         pass
-
-        def set_context_event(self, context, event, func):
-            vkrpg.contexts.context_list[context]['events'][event] = func
-
-        def unset_context_event(self, context, event):
-            del vkrpg.contexts.context_list[context]['events'][event]
 
 
     class Chat:
         scanning_users = {}
 
         def scan(self, vkid):
-            self.scanning_users[vkid] = queue.Queue()
+            t_id = int(threading.current_thread().getName())
+            self.scanning_users[vkid] = {}
+            self.scanning_users[vkid][t_id] = queue.Queue()
             while True:
                 time.sleep(10 / 1000000.0)
                 if vkid in self.scanning_users:
-                    if not self.scanning_users[vkid].empty():
-                        return self.scanning_users[vkid].get()
+                    if not self.scanning_users[vkid][t_id].empty():
+                        msg = self.scanning_users[vkid][t_id].get()
+                        del self.scanning_users[vkid][t_id]
+                        if self.scanning_users[vkid] == {}:
+                            del self.scanning_users[vkid]
+                        return msg
+                else:
+                    return
 
         def start_scan(self, vkid):
-            self.scanning_users[vkid] = queue.Queue()
+            t_id = int(threading.current_thread().getName())
+            self.scanning_users[vkid] = {}
+            self.scanning_users[vkid][t_id] = queue.Queue()
             while True:
                 time.sleep(10 / 1000000.0)
                 if vkid in self.scanning_users:
-                    if not self.scanning_users[vkid].empty():
-                        yield self.scanning_users[vkid].get()
+                    if not self.scanning_users[vkid][t_id].empty():
+                        yield self.scanning_users[vkid][t_id].get()
                 else:
                     return
 
         def stop_scan(self, vkid):
-            del self.scanning_users[vkid]
+            t_id = int(threading.current_thread().getName())
+            del self.scanning_users[vkid][t_id]
+            if self.scanning_users[vkid] == {}:
+                del self.scanning_users[vkid]
 
-        def print(self, pic, mess, toho, torep):
+        def print(self, toho, mess=None, pics=None, torep=None):
             ret = requests.get(
                 'https://api.vk.com/method/photos.getMessagesUploadServer?access_token={access_token}&v=5.68'.format(
                     access_token=TOKEN)).json()
-            with open(pic, 'rb') as f:
-                ret = requests.post(ret['response']['upload_url'], files={'file1': f}).text
-            ret = json.loads(ret)
+            for pic in pics:
+                ret = requests.post(ret['response']['upload_url'], files={'file1': pic}).json()
             ret = requests.get('https://api.vk.com/method/photos.saveMessagesPhoto?v=5.68&album_id=-3&server=' + str(
                 ret['server']) + '&photo=' + ret['photo'] + '&hash=' + str(ret['hash']) + '&access_token=' + TOKEN).text
             ret = json.loads(ret)
@@ -223,8 +223,8 @@ class VKRPG:
                 ret['response'][0]['id']) + '&message=' + mess + '&v=5.68&peer_id=' + str(
                 toho) + '&access_token=' + str(TOKEN))
 
-        def apisay(self, text, toho, torep):
-            param = {'v': '5.68', 'peer_id': toho, 'access_token': TOKEN, 'message': text, 'forward_messages': torep}
+        def apisay(self, text, toho):
+            param = {'v': '5.68', 'peer_id': toho, 'access_token': TOKEN, 'message': text}
             result = requests.post('https://api.vk.com/method/messages.send', data=param)
             return result.text
 
@@ -247,18 +247,23 @@ class VKRPG:
         context_list = {}
 
         def __init__(self, vkrpg):
-            self.create_context('default', {'events':{}})
+
+            self.create_context('default')
             if not hasattr(vkrpg, 'db'):
                 self.users_contexts = {}
 
-        def create_context(self, name, cont_obj):
-            self.context_list[name] = cont_obj
+        def create_context(self, name):
+            self.context_list[name] = {'events':{'on_message': [],
+                                                 'on_rawmessage': [],
+                                                 'on_preparemessage': [],
+                                                 'on_load': [],
+                                                 'on_enablecontext': []}}
 
         def enable_context(self, vk_id, context_id):
             if hasattr(vkrpg, 'db'):
-                res = vkrpg.db.read('users', 'id=' + str(vk_id))
+                res = vkrpg.db.read('users', 'id=' + str(vk_id))[0]
                 res['save']['context'] = context_id
-                vkrpg.db.replace('users', "save='" + json.dumps(res['save']) + "'", 'id=' + str(vk_id))
+                vkrpg.db.replace('users', 'id=' + str(vk_id), "save='" + json.dumps(res['save']) + "' ")
             else:
                 self.users_contexts[vk_id] = context_id
 
@@ -266,7 +271,7 @@ class VKRPG:
             if hasattr(vkrpg, 'db'):
                 res = vkrpg.db.read('users', 'id=' + str(vk_id))[0]
                 if res['save']['context'] in self.context_list:
-                    return self.context_list[res['save']['context']]
+                    return res['save']['context']
                 else:
                     return None
             else:
@@ -299,7 +304,7 @@ class VKRPG:
         def replace(self, table, where, setd):
             sql = """
         UPDATE """ + table + """
-        SET """ + setd + """
+        SET """ + setd + """ 
         WHERE """ + where
             self.cursor.execute(sql)
             self.conn.commit()
