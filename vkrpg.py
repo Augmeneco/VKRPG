@@ -59,7 +59,7 @@ def start():
                 msg = update['object']
 
                 if contexts.get_context(msg['from_id']) is None:
-
+                    contexts.enable_context(msg['from_id'], 'default')
                     continue
 
                 lanode.log_print('(MsgID: ' + str(msg['id']) + ') Получено. '
