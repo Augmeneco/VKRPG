@@ -19,12 +19,12 @@ with open('config.yml') as config_file:
     yaml = YAML()
     CONFIG = yaml.load(config_file.read())
 
+debug_func = lambda x: x
 
 updates_queue = queue.Queue()
 
 
 def start():
-    sys.dont_write_bytecode = True
     lanode.log_print('Инициализация плагинов-скриптов...', 'info')
     # for script in filter(lambda x: x.split('.')[-1] == 'py', os.listdir('./scripts')):
     #     exec(open('./scripts/' + script).read())
@@ -58,6 +58,28 @@ def start():
             if update['type'] == 'message_new':
                 msg = update['object']
 
+                if (msg['peer_id'] > 0) and (msg['peer_id'] < 2000000000):
+                    chat_type = 'private'
+                elif (msg['peer_id'] > 0) and (msg['peer_id'] > 2000000000):
+                    chat_type = 'dialog'
+                elif msg['peer_id'] < 0:
+                    chat_type = 'group_private'
+
+                msg['chat_type'] = chat_type
+                msg['text'] = html.unescape(msg['text'])
+
+                if msg['chat_type'] == 'dialog':
+                    if msg['text'].split(' ')[0] in CONFIG['prefixes']:
+                        msg['pure_text'] = ' '.join(msg['text'].split(' ')[1:]).lower()
+                    else:
+                        continue
+                else:
+                    msg['pure_text'] = msg['text']
+
+                if (msg['pure_text'].split(' ')[0].lower() in ('debug')) and (debug_func is not None):
+                    debug_func(msg)
+                    continue
+
                 if contexts.get_context(msg['from_id']) is None:
                     lanode.log_print('ERROR: Контекста не существует. Chat: ' + str(msg['peer_id']) + ' From: ' + str(msg['from_id']), 'info')
                     continue
@@ -84,24 +106,6 @@ def start():
 
                 for f in events.get_events('on_rawmessage', msg['context']):
                     f(update)
-
-                if (msg['peer_id'] > 0) and (msg['peer_id'] < 2000000000):
-                    chat_type = 'private'
-                elif (msg['peer_id'] > 0) and (msg['peer_id'] > 2000000000):
-                    chat_type = 'dialog'
-                elif msg['peer_id'] < 0:
-                    chat_type = 'group_private'
-
-                msg['chat_type'] = chat_type
-                msg['text'] = html.unescape(msg['text'])
-
-                if msg['chat_type'] == 'dialog':
-                    if msg['text'].split(' ')[0] in CONFIG['prefixes']:
-                        msg['pure_text'] = ' '.join(msg['text'].split(' ')[1:]).lower()
-                    else:
-                        continue
-                else:
-                    msg['pure_text'] = msg['text']
 
                 # if not any(re.match(x['tmplt'], msg['pure_text']) for x in self.chat.cmds_list.values()):
                 #     self.chat.apisay('Такой команды не существует!', msg['peer_id'], msg['id'])

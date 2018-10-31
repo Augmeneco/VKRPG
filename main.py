@@ -13,6 +13,9 @@ from datetime import datetime
 import os
 import vkrpg
 import html
+from io import StringIO
+import contextlib
+import sys
 
 lanode.log_print('VKRPG v0.4 by Lanode (from Augmeneco)')
 
@@ -318,8 +321,30 @@ lanode.log_print('VKRPG v0.4 by Lanode (from Augmeneco)')
 #             self.conn.commit()
 
 
+def debug(msg):
+    code = ' '.join(msg['pure_text'].split(' ')[1:])
+
+    @contextlib.contextmanager
+    def stdoutIO(stdout=None):
+        old = sys.stdout
+        if stdout is None:
+            stdout = StringIO()
+        sys.stdout = stdout
+        yield stdout
+        sys.stdout = old
+
+    with stdoutIO() as s:
+        try:
+            exec(code, globals(), locals())
+        except Exception as e:
+            vkrpg.chat.apisay(str(e), msg['peer_id'])
+
+        vkrpg.chat.apisay(s.getvalue(), msg['peer_id'])
+
+
 if __name__ == "__main__":
     try:
+        vkrpg.debug_func = debug
         vkrpg.start()
     except KeyboardInterrupt:
         lanode.log_print('Получен сигнал завершения. Завершаю работу!', 'info')
