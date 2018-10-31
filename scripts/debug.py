@@ -3,6 +3,7 @@ from io import StringIO
 import contextlib
 import sys
 
+
 def on_preparemessage(msg):
 	if msg['pure_text'].split(' ')[0].lower() in ('debug'):
 		code = ' '.join(msg['pure_text'].split(' ')[1:])
@@ -27,6 +28,7 @@ def on_preparemessage(msg):
 		return False
 	else:
 		return msg
+
 
 def on_load():
 	for c in vkrpg.contexts.context_list.values():

@@ -12,21 +12,20 @@ from datetime import datetime
 import os
 import html
 import sys
+from ruamel.yaml import YAML
 
 
-
-TOKEN = 'fa11495759265b5b4c681fdb9cb063b5d7aba22c760406ac021592e4df3de8f7e3be3383c026495cbe3a5'
-
-PREFIX = 'кб'
-
-USE_DB = True
+with open('config.yml') as config_file:
+    yaml = YAML()
+    CONFIG = yaml.load(config_file.read())
 
 
 updates_queue = queue.Queue()
 
 
 def start():
-    lanode.log_print('Инициализация плагинов...', 'info')
+    sys.dont_write_bytecode = True
+    lanode.log_print('Инициализация плагинов-скриптов...', 'info')
     # for script in filter(lambda x: x.split('.')[-1] == 'py', os.listdir('./scripts')):
     #     exec(open('./scripts/' + script).read())
     for plugin in [x for x in os.listdir('./scripts/') if not os.path.isdir('./scripts/' + x)]:
@@ -40,7 +39,7 @@ def start():
 
     print(contexts.context_list)
 
-    lanode.log_print('Инициализация плагинов завершена.', 'info')
+    lanode.log_print('Инициализация плагинов-скриптов завершена.', 'info')
 
     lanode.log_print('Запуск longpoll потока ...', 'info')
     thread_longpoll = threading.Thread(target=longpollserver)
@@ -60,7 +59,7 @@ def start():
                                  '{SndTime: ' + datetime.fromtimestamp(msg['date']).strftime('%Y.%m.%d %H:%M:%S') + ','
                                  ' Chat: ' + str(msg['peer_id']) + ','
                                  ' From: ' + str(msg['from_id']) + ','
-                                 ' Text: "' + msg['text'] + '"}',
+                                 ' Text: "' + msg['text'].replace('\n', '\\n') + '"}',
                                  'info')
 
                 if 'db' in globals():
@@ -120,7 +119,7 @@ def start():
 def longpollserver():
     def get_lp_server():
         lp_info = requests.post('https://api.vk.com/method/groups.getLongPollServer',
-                                data={'access_token': TOKEN, 'v': '5.80', 'group_id': '171173780'})
+                                data={'access_token': CONFIG['token'], 'v': '5.80', 'group_id': '171173780'})
         lp_info = json.loads(lp_info.text)['response']
         lanode.log_print('Новая информация о longpoll сервере успешно получена','info')
         return lp_info
@@ -211,41 +210,41 @@ class Chat:
     def print(self, toho, mess=None, pics=None, torep=None):
         ret = requests.get(
             'https://api.vk.com/method/photos.getMessagesUploadServer?access_token={access_token}&v=5.68'.format(
-                access_token=TOKEN)).json()
+                access_token=CONFIG['token'])).json()
         for pic in pics:
             ret = requests.post(ret['response']['upload_url'], files={'file1': pic}).json()
         ret = requests.get('https://api.vk.com/method/photos.saveMessagesPhoto?v=5.68&album_id=-3&server=' + str(
-            ret['server']) + '&photo=' + ret['photo'] + '&hash=' + str(ret['hash']) + '&access_token=' + TOKEN).text
+            ret['server']) + '&photo=' + ret['photo'] + '&hash=' + str(ret['hash']) + '&access_token=' + CONFIG['token']).text
         ret = json.loads(ret)
         requests.get('https://api.vk.com/method/messages.send?attachment=photo' + str(
             ret['response'][0]['owner_id']) + '_' + str(
             ret['response'][0]['id']) + '&message=' + mess + '&v=5.68&peer_id=' + str(
-            toho) + '&access_token=' + str(TOKEN))
+            toho) + '&access_token=' + str(CONFIG['token']))
 
     def apisay(self, text, toho):
         lanode.log_print(' Отправлено. '
-                         #'{SndTime: ' + datetime.fromtimestamp(msg['date']).strftime('%Y.%m.%d %H:%M:%S') + ','
+                         '{SndTime: ' + datetime.now().strftime('%Y.%m.%d %H:%M:%S') + ','
                          ' Chat: ' + str(toho) + ','
-                         ' Text: "' + text + '"}',
+                         ' Text: "' + text.replace('\n', '\\n') + '"}',
                          'info')
-        param = {'v': '5.68', 'peer_id': toho, 'access_token': TOKEN, 'message': text}
+        param = {'v': '5.68', 'peer_id': toho, 'access_token': CONFIG['token'], 'message': text}
         result = requests.post('https://api.vk.com/method/messages.send', data=param)
         return result.text
 
     def sendpic(self, pic, mess, toho):
         ret = requests.get(
             'https://api.vk.com/method/photos.getMessagesUploadServer?access_token={access_token}&v=5.68'.format(
-                access_token=TOKEN)).json()
+                access_token=CONFIG['token'])).json()
         with open(pic, 'rb') as f:
             ret = requests.post(ret['response']['upload_url'], files={'file1': f}).text
         ret = json.loads(ret)
         ret = requests.get('https://api.vk.com/method/photos.saveMessagesPhoto?v=5.68&album_id=-3&server=' + str(
-            ret['server']) + '&photo=' + ret['photo'] + '&hash=' + str(ret['hash']) + '&access_token=' + TOKEN).text
+            ret['server']) + '&photo=' + ret['photo'] + '&hash=' + str(ret['hash']) + '&access_token=' + CONFIG['token']).text
         ret = json.loads(ret)
         requests.get('https://api.vk.com/method/messages.send?attachment=photo' + str(
             ret['response'][0]['owner_id']) + '_' + str(
             ret['response'][0]['id']) + '&message=' + mess + '&v=5.68&peer_id=' + str(
-            toho) + '&access_token=' + str(TOKEN))
+            toho) + '&access_token=' + str(CONFIG['token']))
 
 class Contexts:
     context_list = {}
@@ -329,6 +328,8 @@ chat = Chat()
 contexts = Contexts()
 plugins = Plugins()
 events = Events()
-USE_DB = True
-if USE_DB is True:
-    db = DB("dbname=fatedb user=postgres password=psql host=127.0.0.1")
+if CONFIG['standart_db']['use_db'] is True:
+    db = DB('dbname={} user={} password={} host={}'.format(CONFIG['standart_db']['dbname'],
+                                                           CONFIG['standart_db']['user'],
+                                                           CONFIG['standart_db']['password'],
+                                                           CONFIG['standart_db']['host']))

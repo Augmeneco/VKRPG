@@ -1,0 +1,10 @@
+token: 'fa11495759265b5b4c681fdb9cb063b5d7aba22c760406ac021592e4df3de8f7e3be3383c026495cbe3a5'
+prefixes: ['кб']
+standart_db:
+  use_db: true
+  dbname: 'fatedb'
+  user: 'postgres'
+  password: 'psql'
+  host: '127.0.0.1'
+debug:
+  dbg_mode: true
