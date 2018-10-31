@@ -11,7 +11,7 @@ def menu(msg):
         {'title': 'Сражения', 'context': 'battle'},
         {'title': 'Профиль', 'context': 'profile'},
         {'title': 'Инвентарь', 'context': 'menu_inventory'},
-        {'title': 'Малый Грааль', 'context': 'graal'}
+        {'title': 'Малый Грааль', 'context': 'roll'}
     ]
 
     if msg['pure_text'].lower() == 'меню':

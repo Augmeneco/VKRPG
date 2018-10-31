@@ -11,6 +11,8 @@ import psycopg2.extras
 from datetime import datetime
 import os
 import html
+import sys
+
 
 
 TOKEN = 'fa11495759265b5b4c681fdb9cb063b5d7aba22c760406ac021592e4df3de8f7e3be3383c026495cbe3a5'
@@ -102,8 +104,10 @@ def start():
                 for f in events.get_events('on_preparemessage', msg['context']):
                     msg = f(msg)
                     if msg is False:
-                        continue
-
+                        break
+                if msg is False:
+                    continue
+                    
                 if msg['from_id'] in chat.scanning_users:
                     for q in chat.scanning_users[msg['from_id']].values():
                         q.put(msg)
@@ -219,6 +223,11 @@ class Chat:
             toho) + '&access_token=' + str(TOKEN))
 
     def apisay(self, text, toho):
+        lanode.log_print(' Отправлено. '
+                         #'{SndTime: ' + datetime.fromtimestamp(msg['date']).strftime('%Y.%m.%d %H:%M:%S') + ','
+                         ' Chat: ' + str(toho) + ','
+                         ' Text: "' + text + '"}',
+                         'info')
         param = {'v': '5.68', 'peer_id': toho, 'access_token': TOKEN, 'message': text}
         result = requests.post('https://api.vk.com/method/messages.send', data=param)
         return result.text
@@ -256,12 +265,16 @@ class Contexts:
                                    'vars': {}}
 
     def enable_context(self, vk_id, context_id):
-        if 'db' in globals():
-            res = db.read('users', 'id=' + str(vk_id))[0]
-            res['save']['context'] = context_id
-            db.replace('users', 'id=' + str(vk_id), "save='" + json.dumps(res['save']) + "' ")
+        if context_id in self.context_list:
+            if 'db' in globals():
+                res = db.read('users', 'id=' + str(vk_id))[0]
+                res['save']['context'] = context_id
+                db.replace('users', 'id=' + str(vk_id), "save='" + json.dumps(res['save']) + "' ")
+            else:
+                self.users_contexts[vk_id] = context_id
+        
         else:
-            self.users_contexts[vk_id] = context_id
+            return None
 
     def get_context(self, vk_id):
         if 'db' in globals():
