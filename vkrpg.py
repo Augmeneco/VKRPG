@@ -59,7 +59,8 @@ def start():
                 msg = update['object']
 
                 if contexts.get_context(msg['from_id']) is None:
-                    contexts.enable_context(msg['from_id'], 'default')
+                    lanode.log_print('ERROR: Контекста не существует. Chat: ' + str(msg['peer_id']) + ' From: ' + str(msg['from_id']), 'info')
+
                     continue
 
                 lanode.log_print('(MsgID: ' + str(msg['id']) + ') Получено. '
