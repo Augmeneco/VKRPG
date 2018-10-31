@@ -16,14 +16,6 @@ import html
 
 lanode.log_print('VKRPG v0.4 by Lanode (from Augmeneco)')
 
-print(os.path.dirname(__file__))
-
-TOKEN = 'fa11495759265b5b4c681fdb9cb063b5d7aba22c760406ac021592e4df3de8f7e3be3383c026495cbe3a5'
-
-PREFIX = 'кб'
-
-USE_DB = True
-
 
 # class VKRPG:
 #     updates_queue = queue.Queue()

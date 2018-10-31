@@ -38,6 +38,7 @@ def start():
         f()
 
     if CONFIG['debug'] is True:
+        print(os.path.dirname(__file__))
         print(plugins.plugins_list)
         print(contexts.context_list)
 
@@ -56,6 +57,10 @@ def start():
 
             if update['type'] == 'message_new':
                 msg = update['object']
+
+                if contexts.get_context(msg['from_id']) is None:
+
+                    continue
 
                 lanode.log_print('(MsgID: ' + str(msg['id']) + ') Получено. '
                                  '{SndTime: ' + datetime.fromtimestamp(msg['date']).strftime('%Y.%m.%d %H:%M:%S') + ','
