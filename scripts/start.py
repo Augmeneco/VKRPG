@@ -46,7 +46,7 @@ def main(msg):
             return
 
         username = req.post('https://api.vk.com/method/users.get',
-                                 data={'access_token': vkrpg.TOKEN, 'v': '5.84', 'user_ids': msg['from_id']}).json()
+                                 data={'access_token': vkrpg.CONFIG['token'], 'v': '5.84', 'user_ids': msg['from_id']}).json()
         username = username['response'][0]['first_name'] + ' ' + username['response'][0]['last_name']
 
         out = '*'+username+' встаёт к кругу призыва и произносит заклинание:*'

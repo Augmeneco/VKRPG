@@ -6,5 +6,4 @@ standart_db:
   user: 'postgres'
   password: 'psql'
   host: '127.0.0.1'
-debug:
-  dbg_mode: true
+debug: true

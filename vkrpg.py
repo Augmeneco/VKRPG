@@ -28,16 +28,18 @@ def start():
     lanode.log_print('Инициализация плагинов-скриптов...', 'info')
     # for script in filter(lambda x: x.split('.')[-1] == 'py', os.listdir('./scripts')):
     #     exec(open('./scripts/' + script).read())
-    for plugin in [x for x in os.listdir('./scripts/') if not os.path.isdir('./scripts/' + x)]:
+    for plugin in [x for x in os.listdir('./scripts/') if not os.path.isdir('./scripts/' + x) or x[-3] == '.py']:
         spec = importlib.util.spec_from_file_location(plugin.split('.')[0], './scripts/' + plugin)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        plugins.plugins_list[plugin] = module
+        plugins.plugins_list[plugin[:-3]] = module
 
     for f in events.get_events('on_load'):
         f()
 
-    print(contexts.context_list)
+    if CONFIG['debug'] is True:
+        print(plugins.plugins_list)
+        print(contexts.context_list)
 
     lanode.log_print('Инициализация плагинов-скриптов завершена.', 'info')
 
@@ -89,7 +91,7 @@ def start():
                 msg['text'] = html.unescape(msg['text'])
 
                 if msg['chat_type'] == 'dialog':
-                    if msg['text'].split(' ')[0] in ('кб', 'kb'):
+                    if msg['text'].split(' ')[0] in CONFIG['prefixes']:
                         msg['pure_text'] = ' '.join(msg['text'].split(' ')[1:]).lower()
                     else:
                         continue
@@ -207,29 +209,27 @@ class Chat:
         if self.scanning_users[vkid] == {}:
             del self.scanning_users[vkid]
 
-    def print(self, toho, mess=None, pics=None, torep=None):
-        ret = requests.get(
-            'https://api.vk.com/method/photos.getMessagesUploadServer?access_token={access_token}&v=5.68'.format(
-                access_token=CONFIG['token'])).json()
+    def send(self, toho, mess=None, pics=None, torep=None):
+        r = requests.get(
+            'https://api.vk.com/method/photos.getMessagesUploadServer?access_token={}&v=5.68'.format(CONFIG['token'])).json()
         for pic in pics:
-            ret = requests.post(ret['response']['upload_url'], files={'file1': pic}).json()
-        ret = requests.get('https://api.vk.com/method/photos.saveMessagesPhoto?v=5.68&album_id=-3&server=' + str(
-            ret['server']) + '&photo=' + ret['photo'] + '&hash=' + str(ret['hash']) + '&access_token=' + CONFIG['token']).text
-        ret = json.loads(ret)
+            ret = requests.post(r['response']['upload_url'], files={'file': pic}).json()
+            ret = requests.get('https://api.vk.com/method/photos.saveMessagesPhoto?v=5.68&album_id=-3&server=' + str(
+                ret['server']) + '&photo=' + ret['photo'] + '&hash=' + str(ret['hash']) + '&access_token=' + CONFIG['token']).json()
         requests.get('https://api.vk.com/method/messages.send?attachment=photo' + str(
             ret['response'][0]['owner_id']) + '_' + str(
             ret['response'][0]['id']) + '&message=' + mess + '&v=5.68&peer_id=' + str(
             toho) + '&access_token=' + str(CONFIG['token']))
 
     def apisay(self, text, toho):
-        lanode.log_print(' Отправлено. '
+        param = {'v': '5.68', 'peer_id': toho, 'access_token': CONFIG['token'], 'message': text}
+        result = requests.post('https://api.vk.com/method/messages.send', data=param).json()
+        lanode.log_print('(MsgID: ' + str(result['response']) + ') Отправлено. '
                          '{SndTime: ' + datetime.now().strftime('%Y.%m.%d %H:%M:%S') + ','
                          ' Chat: ' + str(toho) + ','
                          ' Text: "' + text.replace('\n', '\\n') + '"}',
                          'info')
-        param = {'v': '5.68', 'peer_id': toho, 'access_token': CONFIG['token'], 'message': text}
-        result = requests.post('https://api.vk.com/method/messages.send', data=param)
-        return result.text
+        return result
 
     def sendpic(self, pic, mess, toho):
         ret = requests.get(
