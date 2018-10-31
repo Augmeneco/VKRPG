@@ -60,7 +60,6 @@ def start():
 
                 if contexts.get_context(msg['from_id']) is None:
                     lanode.log_print('ERROR: Контекста не существует. Chat: ' + str(msg['peer_id']) + ' From: ' + str(msg['from_id']), 'info')
-
                     continue
 
                 lanode.log_print('(MsgID: ' + str(msg['id']) + ') Получено. '
@@ -230,11 +229,11 @@ class Chat:
     def apisay(self, text, toho):
         param = {'v': '5.68', 'peer_id': toho, 'access_token': CONFIG['token'], 'message': text}
         result = requests.post('https://api.vk.com/method/messages.send', data=param).json()
-        lanode.log_print('(MsgID: ' + str(result['response']) + ') Отправлено. '
-                         '{SndTime: ' + datetime.now().strftime('%Y.%m.%d %H:%M:%S') + ','
-                         ' Chat: ' + str(toho) + ','
-                         ' Text: "' + text.replace('\n', '\\n') + '"}',
-                         'info')
+        # lanode.log_print('(MsgID: ' + str(result['response']) + ') Отправлено. '
+        #                  '{SndTime: ' + datetime.now().strftime('%Y.%m.%d %H:%M:%S') + ','
+        #                  ' Chat: ' + str(toho) + ','
+        #                  ' Text: "' + text.replace('\n', '\\n') + '"}',
+        #                  'info')
         return result
 
     def sendpic(self, pic, mess, toho):
