@@ -38,5 +38,7 @@ def main(msg):
 		save['servants'][servlist[0]] = {'hp':servlist[2],'atk':servlist[4],'np':servlist[6],'class':userservdb}
 		vkrpg.db.cursor.execute("UPDATE users SET save='" + json.dumps(save) + "' WHERE id=" + str(msg['from_id']))
 		vkrpg.db.conn.commit()
+
+	if
 vkrpg.contexts.create_context('roll')
 vkrpg.events.add_event('on_message', main, 'roll')

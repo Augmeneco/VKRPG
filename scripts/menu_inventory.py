@@ -12,30 +12,7 @@ def menu(msg):
         {'title': 'В главное меню', 'context': 'menu_main'}
     ]
 
-    if msg['pure_text'].lower() == 'меню':
-        out = '[ System ] Выберете пункт меню (цифра или название):\n'
-        for idx, item in enumerate(menu_list):
-            out += str(idx+1) + ' - ' + item['title'] + '\n'
-        vkrpg.chat.apisay(out, msg['peer_id'])
-
-        return
-
-    if msg['pure_text'].isdigit():
-        if len(menu_list)+1 >= int(msg['pure_text']):
-            menu_item_select = int(msg['pure_text'])
-        else:
-            out = '[ System ] Такого пункта меню не существует. Напиши "меню" чтоб узнать какие пункты существуют.'
-            vkrpg.chat.apisay(out, msg['peer_id'])
-            return
-    else:
-        menu_item = list([item for item in menu_list if item['title'].lower() == msg['pure_text'].lower()])
-        if menu_item != []:
-            menu_item_select = list([idx for idx,item in enumerate(menu_list)
-                                     if item['title'].lower() == msg['pure_text'].lower()])[0]
-        else:
-            out = '[ System ] Такого пункта меню не существует. Напиши "меню" чтоб узнать какие пункты существуют.'
-            vkrpg.chat.apisay(out, msg['peer_id'])
-            return
+    menu_item_select = vkrpg.chat.select(menu_list, msg)
 
     vkrpg.db.cursor.execute("SELECT save FROM users WHERE id=" + str(msg['from_id']))
     save = vkrpg.db.cursor.fetchone()[0]

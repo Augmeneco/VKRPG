@@ -255,6 +255,34 @@ class Chat:
             ret['response'][0]['id']) + '&message=' + mess + '&v=5.68&peer_id=' + str(
             toho) + '&access_token=' + str(CONFIG['token']))
 
+    def select(self, menu_list, msg):
+        if msg['pure_text'].lower() == 'меню':
+            out = '[ System ] Выберете пункт меню (цифра или название):\n'
+            for idx, item in enumerate(menu_list):
+                out += str(idx + 1) + ' - ' + item['title'] + '\n'
+            chat.apisay(out, msg['peer_id'])
+
+            return
+
+        if msg['pure_text'].isdigit():
+            if len(menu_list) + 1 >= int(msg['pure_text']):
+                menu_item_select = int(msg['pure_text'])
+            else:
+                out = '[ System ] Такого пункта меню не существует. Напиши "меню" чтоб узнать какие пункты существуют.'
+                chat.apisay(out, msg['peer_id'])
+                return
+        else:
+            menu_item = list([item for item in menu_list if item['title'].lower() == msg['pure_text'].lower()])
+            if menu_item != []:
+                menu_item_select = list([idx for idx, item in enumerate(menu_list)
+                                         if item['title'].lower() == msg['pure_text'].lower()])[0]
+            else:
+                out = '[ System ] Такого пункта меню не существует. Напиши "меню" чтоб узнать какие пункты существуют.'
+                chat.apisay(out, msg['peer_id'])
+                return
+
+        return menu_item_select
+
 class Contexts:
     context_list = {}
 
