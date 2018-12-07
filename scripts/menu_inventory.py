@@ -4,22 +4,25 @@ import random
 import json
 import sqlite3
 
+menu_list = [
+    {'title': 'Предметы', 'one_time': False},
+    {'title': 'Слуги', 'one_time': False},
+    {'title': 'В главное меню', 'one_time': True}
+]
+
 
 def menu(msg):
-    menu_list = [
-        {'title': 'Предметы', 'context': 'menu_inventory'},
-        {'title': 'Слуги', 'context': 'menu_inventory'},
-        {'title': 'В главное меню', 'context': 'menu_main'}
-    ]
-
-    menu_item_select = vkrpg.chat.select(menu_list, msg)
+    if msg['pure_text'].lower() in ('меню'):
+        vkrpg.chat.actions_display(menu_list, msg['peer_id'])
+        return
+    menu_item_select = vkrpg.chat.actions_select(menu_list, msg)
 
     vkrpg.db.cursor.execute("SELECT save FROM users WHERE id=" + str(msg['from_id']))
     save = vkrpg.db.cursor.fetchone()[0]
 
-    if menu_item_select == 1:
+    if menu_item_select == 0:
         vkrpg.chat.apisay(str(save['inventory']), msg['peer_id'])
-    elif menu_item_select == 2:
+    elif menu_item_select == 1:
         if len(save['servants']) != 0:
             out = '[ System ] Ваши слуги:\n'
             for name, obj in save['servants'].items():
@@ -28,23 +31,12 @@ def menu(msg):
         else:
             out = '[ System ] У тебя нет слуг. Обратись к Ассоциации Магов через команду "старт"'
             vkrpg.chat.apisay(out, msg['peer_id'])
-    elif menu_item_select == 3:
-        vkrpg.contexts.enable_context(msg['from_id'], 'menu_main')
-        for f in vkrpg.events.get_events('on_enablecontext', 'menu_main'):
-            f(msg)
+    elif menu_item_select == 2:
+        vkrpg.contexts.enable_context(msg['from_id'], 'menu_main', msg)
 
 
 def enablecontext(msg):
-    menu_list = [
-        {'title': 'Предметы', 'context': 'menu_inventory'},
-        {'title': 'Слуги', 'context': 'menu_inventory'},
-        {'title': 'В главное меню', 'context': 'menu_main'}
-    ]
-
-    out = '[ System ] Выберете пункт меню (цифра или название):\n'
-    for idx, item in enumerate(menu_list):
-        out += str(idx+1) + ' - ' + item['title'] + '\n'
-    vkrpg.chat.apisay(out, msg['peer_id'])
+    vkrpg.chat.actions_display(menu_list, msg['peer_id'])
 
 
 vkrpg.contexts.create_context('menu_inventory')

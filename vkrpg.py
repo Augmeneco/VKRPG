@@ -7,10 +7,12 @@ import lanode
 import psycopg2
 import importlib
 import importlib.util
+import random
 import psycopg2.extras
 from datetime import datetime
 import os
 import html
+import re
 import sys
 from ruamel.yaml import YAML
 
@@ -47,36 +49,46 @@ def start():
     lanode.log_print('Запуск longpoll потока ...', 'info')
     thread_longpoll = threading.Thread(target=longpollserver)
     thread_longpoll.start()
-    lanode.log_print('Longpoll поток запущен.', 'info')
 
     while True:
         time.sleep(10/1000000.0)
 
         if not updates_queue.empty():
             update = updates_queue.get()
+            if CONFIG['debug'] is True:
+                print(update)
 
             if update['type'] == 'message_new':
                 msg = update['object']
 
                 if (msg['peer_id'] > 0) and (msg['peer_id'] < 2000000000):
                     chat_type = 'private'
-                elif (msg['peer_id'] > 0) and (msg['peer_id'] > 2000000000):
+                elif msg['peer_id'] > 2000000000:
                     chat_type = 'dialog'
                 elif msg['peer_id'] < 0:
                     chat_type = 'group_private'
 
                 msg['chat_type'] = chat_type
-                msg['text'] = html.unescape(msg['text'])
+                if 'text' in msg:
+                    msg['text'] = html.unescape(msg['text'])
+                else:
+                    msg['text'] = ''
 
                 if msg['chat_type'] == 'dialog':
                     if msg['text'].split(' ')[0] in CONFIG['prefixes']:
                         msg['pure_text'] = ' '.join(msg['text'].split(' ')[1:]).lower()
+                    elif re.search(r'(\[club(\d+)\|\s*\S+\s*\]).*', msg['text']) is not None:
+                        match = re.findall(r'(\[club(\d+)\|\s*\S+\s*\]).*', msg['text'])[0]
+                        if int(match[1]) == CONFIG['group_id']:
+                            msg['pure_text'] = msg['text'].replace(match[0]+' ', '')
+                        else:
+                            continue
                     else:
                         continue
                 else:
                     msg['pure_text'] = msg['text']
 
-                if (msg['pure_text'].split(' ')[0].lower() in ('debug')) and (debug_func is not None):
+                if (msg['pure_text'].split(' ')[0].lower() in ('debug', 'dbg', 'дбг', 'дебаг')) and (debug_func is not None):
                     debug_func(msg)
                     continue
 
@@ -117,7 +129,10 @@ def start():
                         break
                 if msg is False:
                     continue
-                    
+
+                if CONFIG['debug'] is True:
+                    print(msg)
+
                 if msg['from_id'] in chat.scanning_users:
                     for q in chat.scanning_users[msg['from_id']].values():
                         q.put(msg)
@@ -136,6 +151,7 @@ def longpollserver():
         return lp_info
 
     lp_info = get_lp_server()
+    lanode.log_print('Longpoll поток запущен.', 'info')
     while True:
         time.sleep(10 / 1000000.0)
         lp_url = lp_info['server'] + '?act=a_check&key=' + lp_info['key'] + '&ts=' + \
@@ -147,7 +163,6 @@ def longpollserver():
                 updates_queue.put(update)
         except KeyError:
             lp_info = get_lp_server()
-
 
 
 class Plugins:
@@ -179,6 +194,54 @@ class Events:
     # def longpoll(self, lp_event=None):
     #     if lp_event == None:
     #         pass
+
+
+class Contexts:
+    context_list = {}
+
+    def __init__(self):
+
+        self.create_context('default')
+        if 'db' in globals():
+            self.users_contexts = {}
+
+    def create_context(self, name):
+        self.context_list[name] = {'events': {'on_message': [],
+                                              'on_rawmessage': [],
+                                              'on_preparemessage': [],
+                                              'on_load': [],
+                                              'on_enablecontext': []},
+                                   'vars': {}}
+
+    def enable_context(self, vk_id, context_id, obj_for_event=None):
+        if context_id in self.context_list:
+            if 'db' in globals():
+                res = db.read('users', 'id=' + str(vk_id))[0]
+                res['save']['context'] = context_id
+                db.replace('users', 'id=' + str(vk_id), "save='" + json.dumps(res['save']) + "' ")
+            else:
+                self.users_contexts[vk_id] = context_id
+
+            for f in self.context_list[context_id]['events']['on_enablecontext']:
+                f(obj_for_event)
+
+            return True
+
+        else:
+            return False
+
+    def get_context(self, vk_id):
+        if 'db' in globals():
+            res = db.read('users', 'id=' + str(vk_id))[0]
+            if res['save']['context'] in self.context_list:
+                return res['save']['context']
+            else:
+                return None
+        else:
+            if vk_id in self.users_contexts:
+                return self.users_contexts[vk_id]
+            else:
+                return None
 
 
 class Chat:
@@ -255,75 +318,57 @@ class Chat:
             ret['response'][0]['id']) + '&message=' + mess + '&v=5.68&peer_id=' + str(
             toho) + '&access_token=' + str(CONFIG['token']))
 
-    def select(self, menu_list, msg):
-        if msg['pure_text'].lower() == 'меню':
-            out = '[ System ] Выберете пункт меню (цифра или название):\n'
-            for idx, item in enumerate(menu_list):
-                out += str(idx + 1) + ' - ' + item['title'] + '\n'
-            chat.apisay(out, msg['peer_id'])
+    def actions_display(self, actions_list, peer_id):
+        out = '[ System ] Выберете действие (цифра, название или кнопка):\n'
+        for idx, item in enumerate(actions_list):
+            out += str(idx + 1) + ' - ' + item['title'] + '\n'
 
-            return
+        if peer_id > 2000000000:
+            chat.apisay(out, peer_id)
+        elif (peer_id > 0) and (peer_id < 2000000000):
+            keyboard_obj = {'one_time': False, 'buttons': []}
+            for menu_list_chunk in lanode.chunks(list(enumerate(actions_list)), 4):
+                keyboard_obj['buttons'].append(list([{'color': 'default',
+                                                      'action': {
+                                                          'type': 'text',
+                                                          'payload': '{\"button\": \"' + str(x[0]) + '\"}',
+                                                          'label': x[1]['title']
+                                                      }} for x in menu_list_chunk]))
+            lanode.vk_api('messages.send', {'v': '5.92',
+                                            'peer_id': peer_id,
+                                            'random_id': random.randint(0, 9223372036854775807),
+                                            'message': out,
+                                            'keyboard': json.dumps(keyboard_obj, ensure_ascii=False)}, CONFIG['token'])
 
+    def actions_select(self, actions_list, msg):
         if msg['pure_text'].isdigit():
-            if len(menu_list) + 1 >= int(msg['pure_text']):
-                menu_item_select = int(msg['pure_text'])
+            if len(actions_list) + 1 >= int(msg['pure_text']):
+                menu_item_select = int(msg['pure_text']) - 1
             else:
                 out = '[ System ] Такого пункта меню не существует. Напиши "меню" чтоб узнать какие пункты существуют.'
                 chat.apisay(out, msg['peer_id'])
                 return
+        elif 'payload' in msg:
+            menu_item_select = int(json.loads(msg['payload'])['button'])
         else:
-            menu_item = list([item for item in menu_list if item['title'].lower() == msg['pure_text'].lower()])
+            menu_item = list([item for item in actions_list if item['title'].lower() == msg['pure_text'].lower()])
             if menu_item != []:
-                menu_item_select = list([idx for idx, item in enumerate(menu_list)
+                menu_item_select = list([idx for idx, item in enumerate(actions_list)
                                          if item['title'].lower() == msg['pure_text'].lower()])[0]
             else:
                 out = '[ System ] Такого пункта меню не существует. Напиши "меню" чтоб узнать какие пункты существуют.'
                 chat.apisay(out, msg['peer_id'])
                 return
 
+        if (msg['chat_type'] == 'private') and ('one_time' in actions_list[menu_item_select]):
+            if actions_list[menu_item_select]['one_time']:
+                lanode.vk_api('messages.send', {'v': '5.92',
+                                                'peer_id': msg['peer_id'],
+                                                'random_id': random.randint(0, 9223372036854775807),
+                                                'message': 'Выполняю команду '+str(menu_item_select),
+                                                'keyboard': json.dumps({"buttons":[],"one_time":True})}, CONFIG['token'])
         return menu_item_select
 
-class Contexts:
-    context_list = {}
-
-    def __init__(self):
-
-        self.create_context('default')
-        if 'db' in globals():
-            self.users_contexts = {}
-
-    def create_context(self, name):
-        self.context_list[name] = {'events': {'on_message': [],
-                                              'on_rawmessage': [],
-                                              'on_preparemessage': [],
-                                              'on_load': [],
-                                              'on_enablecontext': []},
-                                   'vars': {}}
-
-    def enable_context(self, vk_id, context_id):
-        if context_id in self.context_list:
-            if 'db' in globals():
-                res = db.read('users', 'id=' + str(vk_id))[0]
-                res['save']['context'] = context_id
-                db.replace('users', 'id=' + str(vk_id), "save='" + json.dumps(res['save']) + "' ")
-            else:
-                self.users_contexts[vk_id] = context_id
-        
-        else:
-            return None
-
-    def get_context(self, vk_id):
-        if 'db' in globals():
-            res = db.read('users', 'id=' + str(vk_id))[0]
-            if res['save']['context'] in self.context_list:
-                return res['save']['context']
-            else:
-                return None
-        else:
-            if vk_id in self.users_contexts:
-                return self.users_contexts[vk_id]
-            else:
-                return None
 
 class DB:
     def __init__(self, conn_str):
