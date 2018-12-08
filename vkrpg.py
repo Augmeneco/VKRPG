@@ -53,6 +53,28 @@ def start():
     while True:
         time.sleep(10/1000000.0)
 
+        for t in events.get_events('on_timer').copy():
+            if t[2] >= time.time():
+                if t[0]:
+                    t[3](t)
+                    events.get_events('on_timer').remove(t)
+                else:
+                    t[3](t)
+                    t[1] = time.time()
+
+                # timers = events.get_events('on_timer').copy()
+        # i = 0
+        # while i <= len(timers):
+        #     t = timers[i]
+        #     if t[0]:
+        #         t[3]()
+        #         events.get_events('on_timer').remove(t)
+        #     else:
+        #         t[3]()
+        #         t[1] =
+        #     i += 1
+
+
         if not updates_queue.empty():
             update = updates_queue.get()
             if CONFIG['debug'] is True:
@@ -191,6 +213,11 @@ class Events:
     def get_events(self, event, context='default'):
         return contexts.context_list[context]['events'][event]
 
+    def add_timerevent(self, t, f, one_time=True):
+        timer = [one_time, time.time(), t, f]
+        contexts.context_list['default']['events']['on_timer'].append(timer)
+        return timer
+
     # def longpoll(self, lp_event=None):
     #     if lp_event == None:
     #         pass
@@ -210,7 +237,8 @@ class Contexts:
                                               'on_rawmessage': [],
                                               'on_preparemessage': [],
                                               'on_load': [],
-                                              'on_enablecontext': []},
+                                              'on_enablecontext': [],
+                                              'on_timer': []},
                                    'vars': {}}
 
     def enable_context(self, vk_id, context_id, obj_for_event=None):
