@@ -76,7 +76,7 @@ def main(msg):
 
         vkrpg.db.cursor.execute("SELECT save FROM users WHERE id=" + str(msg['from_id']))
         save = vkrpg.db.cursor.fetchone()[0]
-        save['servants'][servlist[0]] = {'hp':servlist[2],'atk':servlist[4],'np':servlist[6],'class':userservdb}
+        save['inventory']['servants'][servlist[0]] = {'hp':servlist[2],'atk':servlist[4],'np':servlist[6],'class':userservdb}
         vkrpg.db.cursor.execute("UPDATE users "
                                 "SET save='" + json.dumps(save) + "' "
                                                                        "WHERE id=" + str(msg['from_id']))

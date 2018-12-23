@@ -1,5 +1,8 @@
 # VKRPG
 
+VKRPG является context-event-driven (Контекстно-Событийным) движком.
+Контекст - это окружение состоящее из функций, переменных и \[добавить из чего ещё] которые могут устонавливаться для одного или более пользователя. Контексты также могут иметь копии.
+
 vkrpg.events.add_event(event: string, f: function, contextid='default': string) - добавляет функцию f к событию event контекста contextid
 vkrpg.events.remove_event(event: string, f: function, contextid='default': string) - удаляет функцию f к событию event контекста contextid
 vkrpg.events.get_events(event: string, contextid='default': string) - получить список функций к событию event контекста contextid
