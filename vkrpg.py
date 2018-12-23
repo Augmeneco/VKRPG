@@ -4,6 +4,7 @@ import requests
 import threading
 import time
 import lanode
+import copy
 import psycopg2
 import importlib
 import importlib.util
@@ -53,14 +54,17 @@ def start():
     while True:
         time.sleep(10/1000000.0)
 
+        for f in events.get_events('on_evloopiter'):
+            f()
+
         for t in events.get_events('on_timer').copy():
-            if t[2] >= time.time():
-                if t[0]:
-                    t[3](t)
+            if t[3] >= time.time():
+                if t[1]:
+                    t[0](t)
                     events.get_events('on_timer').remove(t)
                 else:
-                    t[3](t)
-                    t[1] = time.time()
+                    t[0](t)
+                    t[2] = time.time()
 
                 # timers = events.get_events('on_timer').copy()
         # i = 0
@@ -96,26 +100,25 @@ def start():
                 else:
                     msg['text'] = ''
 
-                if msg['chat_type'] == 'dialog':
-                    if msg['text'].split(' ')[0] in CONFIG['prefixes']:
-                        msg['pure_text'] = ' '.join(msg['text'].split(' ')[1:]).lower()
-                    elif re.search(r'(\[club(\d+)\|\s*\S+\s*\]).*', msg['text']) is not None:
-                        match = re.findall(r'(\[club(\d+)\|\s*\S+\s*\]).*', msg['text'])[0]
-                        if int(match[1]) == CONFIG['group_id']:
-                            msg['pure_text'] = msg['text'].replace(match[0]+' ', '')
+                if msg['text'].split(' ')[0] in CONFIG['prefixes']:
+                    msg['pure_text'] = ' '.join(msg['text'].split(' ')[1:]).lower()
+                elif re.search(r'(\[club(\d+)\|\s*\S+\s*\]).*', msg['text']) is not None:
+                    match = re.findall(r'(\[club(\d+)\|\s*\S+\s*\]).*', msg['text'])[0]
+                    if int(match[1]) == CONFIG['group_id']:
+                        msg['pure_text'] = msg['text'].replace(match[0]+' ', '')
+                    else:
+                        if msg['chat_type'] == 'private':
+                            msg['pure_text'] = msg['text']
                         else:
                             continue
+                else:
+                    if msg['chat_type'] == 'private':
+                        msg['pure_text'] = msg['text']
                     else:
                         continue
-                else:
-                    msg['pure_text'] = msg['text']
 
                 if (msg['pure_text'].split(' ')[0].lower() in ('debug', 'dbg', 'дбг', 'дебаг')) and (debug_func is not None):
                     debug_func(msg)
-                    continue
-
-                if contexts.get_context(msg['from_id']) is None:
-                    lanode.log_print('ERROR: Контекста не существует. Chat: ' + str(msg['peer_id']) + ' From: ' + str(msg['from_id']), 'info')
                     continue
 
                 lanode.log_print('(MsgID: ' + str(msg['id']) + ') Получено. '
@@ -128,24 +131,30 @@ def start():
                 if 'db' in globals():
                     res = db.read('users', "id='"+str(update['object']['from_id'])+"'")
                     if res == []:
-                        db.write('users', [(str(update['object']['from_id']), '{}', '{"context":"default","inventory":[],"servants":{}}')])
+                        db.write('users', [(str(update['object']['from_id']), '{}', '{"context":"default","inventory":{"servants":{}}}')])
                         res = db.read('users', "id='" + str(update['object']['from_id']) + "'")
-
+                        for f in events.get_events('on_newuser'):
+                            f(msg)
                     msg['db'] = res[0]
                 else:
-                    if msg['from_id'] in contexts.users_contexts:
+                    if msg['from_id'] not in contexts.users_contexts:
                         contexts.enable_context(msg['from_id'], 'default')
 
-                msg['context'] = contexts.get_context(msg['from_id'])
+                if contexts.get_context(contexts.get_contextid_by_vkid(msg['from_id'])) is None:
+                    lanode.log_print('ERROR: Контекста не существует. Chat: ' + str(msg['peer_id']) + ' From: ' + str(
+                        msg['from_id']), 'info')
+                    for f in events.get_events('on_contextnotfound'):
+                        f(msg, contexts.get_contextid_by_vkid(msg['from_id']))
+                    continue
 
-                for f in events.get_events('on_rawmessage', msg['context']):
+                for f in events.get_events('on_rawmessage', contexts.get_contextid_by_vkid(msg['from_id'])):
                     f(update)
 
                 # if not any(re.match(x['tmplt'], msg['pure_text']) for x in self.chat.cmds_list.values()):
                 #     self.chat.apisay('Такой команды не существует!', msg['peer_id'], msg['id'])
                 #     continue
 
-                for f in events.get_events('on_preparemessage', msg['context']):
+                for f in events.get_events('on_preparemessage', contexts.get_contextid_by_vkid(msg['from_id'])):
                     msg = f(msg)
                     if msg is False:
                         break
@@ -159,7 +168,7 @@ def start():
                     for q in chat.scanning_users[msg['from_id']].values():
                         q.put(msg)
                 else:
-                    for f in events.get_events('on_message', msg['context']):
+                    for f in events.get_events('on_message', contexts.get_contextid_by_vkid(msg['from_id'])):
                         thread = threading.Thread(target=f, args=(msg,))
                         thread.setName(str(msg['id']))
                         thread.start()
@@ -204,19 +213,24 @@ class Events:
     #         results.append(f())
     #     return results
 
-    def add_event(self, event, f, context='default'):
-        contexts.context_list[context]['events'][event].append(f)
+    def add_event(self, event, f, contextid='default'):
+        contexts.get_context(contextid)['events'][event].append(f)
 
-    def remove_event(self, event, f, context='default'):
-        contexts.context_list[context]['events'][event].remove(f)
+    def remove_event(self, event, f, contextid='default'):
+        contexts.get_context(contextid)['events'][event].remove(f)
 
-    def get_events(self, event, context='default'):
-        return contexts.context_list[context]['events'][event]
+    def get_events(self, event, contextid='default'):
+        return contexts.get_context(contextid)['events'][event]
 
-    def add_timerevent(self, t, f, one_time=True):
-        timer = [one_time, time.time(), t, f]
-        contexts.context_list['default']['events']['on_timer'].append(timer)
-        return timer
+    # def add_timerevent(self, t, f, one_time=True):
+    #     timer = [f, one_time, time.time(), t]
+    #     contexts.get_context('default')['events']['on_timer'].append(timer)
+    #     return timer
+    #
+    # def add_timerevent(self, t, f, one_time=True):
+    #
+    #     contexts.get_context(contextid)['events'][event].remove([x for x in contexts.get_context(contextid)['events'][event]
+    #                                                          if x[0] == f][0])
 
     # def longpoll(self, lp_event=None):
     #     if lp_event == None:
@@ -227,30 +241,50 @@ class Contexts:
     context_list = {}
 
     def __init__(self):
-
         self.create_context('default')
         if 'db' in globals():
             self.users_contexts = {}
 
-    def create_context(self, name):
-        self.context_list[name] = {'events': {'on_message': [],
-                                              'on_rawmessage': [],
-                                              'on_preparemessage': [],
-                                              'on_load': [],
-                                              'on_enablecontext': [],
-                                              'on_timer': []},
-                                   'vars': {}}
+    def create_context(self, contextid):
+        context = {'events': {'on_message': [],
+                              'on_rawmessage': [],
+                              'on_preparemessage': [],
+                              'on_load': [],
+                              'on_enablecontext': [],
+                              'on_disablecontext': [],
+                              'on_timer': [],
+                              'on_evloopiter': [],
+                              'on_contextnotfound': []},
+                   'vars': {},
+                   'copies': {},
+                   'childs': {}}
+        self.context_list[contextid] = context
+        return context
 
-    def enable_context(self, vk_id, context_id, obj_for_event=None):
-        if context_id in self.context_list:
+    def create_context_copy(self, contextid):
+        if contextid.split(':')[0] in self.context_list:
+            context_copy = {i:copy.deepcopy(self.context_list[contextid][i])
+                            for i in self.context_list[contextid]
+                            if i not in ('childs', 'copies')}
+            copy_id = len(self.context_list[contextid]['copies'])
+            self.context_list[contextid]['copies'][copy_id] = context_copy
+            return contextid + ':' + str(copy_id), context_copy
+
+    def enable_context(self, vkid, contextid, obj_for_event=None):
+        if contextid.split(':')[0] in self.context_list:
             if 'db' in globals():
-                res = db.read('users', 'id=' + str(vk_id))[0]
-                res['save']['context'] = context_id
-                db.replace('users', 'id=' + str(vk_id), "save='" + json.dumps(res['save']) + "' ")
+                res = db.read('users', 'id=' + str(vkid))[0]
+                contextid_old = res['save']['context']
+                res['save']['context'] = contextid
+                db.replace('users', 'id=' + str(vkid), "save='" + json.dumps(res['save']) + "' ")
             else:
-                self.users_contexts[vk_id] = context_id
+                contextid_old = self.users_contexts[vkid]
+                self.users_contexts[vkid] = contextid
 
-            for f in self.context_list[context_id]['events']['on_enablecontext']:
+            if self.get_context(contextid_old) is not None:
+                for f in self.get_context(contextid_old)['events']['on_disablecontext']:
+                    f(obj_for_event)
+            for f in self.get_context(contextid)['events']['on_enablecontext']:
                 f(obj_for_event)
 
             return True
@@ -258,18 +292,37 @@ class Contexts:
         else:
             return False
 
-    def get_context(self, vk_id):
+    def get_contextid_by_vkid(self, vkid):
         if 'db' in globals():
-            res = db.read('users', 'id=' + str(vk_id))[0]
-            if res['save']['context'] in self.context_list:
-                return res['save']['context']
-            else:
-                return None
+            res = db.read('users', 'id=' + str(vkid))[0]
+            return res['save']['context']
         else:
-            if vk_id in self.users_contexts:
-                return self.users_contexts[vk_id]
+            return self.users_contexts[vkid]
+
+    def get_context(self, contextid):
+        if contextid.split(':')[0] in self.context_list:
+            if len(contextid.split(':')) == 1:
+                return self.context_list[contextid]
+            elif len(contextid.split(':')) == 2:
+                if int(contextid.split(':')[1]) in self.context_list[contextid.split(':')[0]]['copies']:
+                    return self.context_list[contextid.split(':')[0]]['copies'][int(contextid.split(':')[1])]
+                else:
+                    return None
+        else:
+            return None
+
+    def remove_context(self, contextid):
+        if contextid.split(':')[0] in self.context_list:
+            if len(contextid.split(':')) == 1:
+                del self.context_list[contextid]
+                return True
+            elif len(contextid.split(':')) == 2:
+                del self.context_list[contextid.split(':')[0]]['copies'][int(contextid.split(':')[1])]
+                return True
             else:
-                return None
+                return False
+        else:
+            return False
 
 
 class Chat:
@@ -346,8 +399,12 @@ class Chat:
             ret['response'][0]['id']) + '&message=' + mess + '&v=5.68&peer_id=' + str(
             toho) + '&access_token=' + str(CONFIG['token']))
 
-    def actions_display(self, actions_list, peer_id):
-        out = '[ System ] Выберете действие (цифра, название или кнопка):\n'
+    def actions_display(self, actions_list, peer_id, title=None):
+        if title is None:
+            out = '[ System ] Выберете действие (цифра, название или кнопка):\n'
+        else:
+            out = title + '\n'
+
         for idx, item in enumerate(actions_list):
             out += str(idx + 1) + ' - ' + item['title'] + '\n'
 
@@ -387,7 +444,8 @@ class Chat:
                 out = '[ System ] Такого пункта меню не существует. Напиши "меню" чтоб узнать какие пункты существуют.'
                 chat.apisay(out, msg['peer_id'])
                 return
-
+        print(actions_list)
+        print(menu_item_select)
         if (msg['chat_type'] == 'private') and ('one_time' in actions_list[menu_item_select]):
             if actions_list[menu_item_select]['one_time']:
                 lanode.vk_api('messages.send', {'v': '5.92',
@@ -432,7 +490,6 @@ class DB:
         self.cursor.execute(sql)
 
         self.conn.commit()
-
 
 chat = Chat()
 contexts = Contexts()

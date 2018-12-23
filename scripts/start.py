@@ -6,8 +6,9 @@ import sqlite3
 
 
 def main(msg):
-    print(msg['pure_text'])
-    if msg['pure_text'].lower() == 'старт':
+    if 'payload' not in msg:
+        msg['payload'] = '{"command":""}'
+    if (msg['pure_text'].lower() == 'старт') or (json.loads(msg['payload'])['command'] == 'start'):
         # vkrpg.db.cursor.execute(
         #     'SELECT id FROM users WHERE id=' + str(msg['from_id']))
         # user = vkrpg.db.cursor.fetchone()
@@ -81,9 +82,7 @@ def main(msg):
                                                                        "WHERE id=" + str(msg['from_id']))
         vkrpg.db.conn.commit()
 
-        vkrpg.contexts.enable_context(msg['from_id'], 'menu_main')
-        for f in vkrpg.events.get_events('on_enablecontext', 'menu_main'):
-            f(msg)
+        vkrpg.contexts.enable_context(msg['from_id'], 'menu_main', msg)
 
 
 vkrpg.events.add_event('on_message', main, 'default')

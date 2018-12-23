@@ -3,7 +3,7 @@ import vkrpg
 
 menu_list = [
     {'title': 'Задания', 'context': 'missions'},
-    {'title': 'Сражения', 'context': 'menu_battle'},
+    {'title': 'Сражения', 'context': 'battle'},
     {'title': 'Профиль', 'context': 'profile'},
     {'title': 'Инвентарь', 'context': 'menu_inventory'},
     {'title': 'Малый Грааль', 'context': 'graal'}
@@ -20,8 +20,14 @@ def menu(msg):
         vkrpg.contexts.enable_context(msg['from_id'], menu_list[menu_item_select]['context'], msg)
 
 
-def enablecontext(msg):
-    vkrpg.chat.actions_display(menu_list, msg['peer_id'])
+def enablecontext(obj):
+    if obj[1] == 0:
+        pass
+    elif obj[1] == 1:
+        pass
+    elif obj[1] == 2:
+        pass
+    vkrpg.chat.actions_display(menu_list, obj[0]['peer_id'])
 
 
 vkrpg.contexts.create_context('menu_main')

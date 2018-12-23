@@ -1,12 +1,9 @@
 import vkrpg
-import requests
-import random
-import json
-import sqlite3
 
 menu_list = [
     {'title': 'Предметы', 'one_time': False},
     {'title': 'Слуги', 'one_time': False},
+    {'title': 'Выбрать слуг для битв', 'one_time': False},
     {'title': 'В главное меню', 'one_time': True}
 ]
 
@@ -31,7 +28,7 @@ def menu(msg):
         else:
             out = '[ System ] У тебя нет слуг. Обратись к Ассоциации Магов через команду "старт"'
             vkrpg.chat.apisay(out, msg['peer_id'])
-    elif menu_item_select == 2:
+    elif menu_item_select == 3:
         vkrpg.contexts.enable_context(msg['from_id'], 'menu_main', msg)
 
 
