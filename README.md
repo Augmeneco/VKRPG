@@ -12,7 +12,7 @@ VKRPG является context-event-driven (Контекстно-Событий
 
 ### ContextsAPI
 - vkrpg.contexts.create_context(contextid: string) - создать пустой контекст c именем contextid. Вернёт новый контекст
-- vkrpg.contexts.create\_context\_copy(contextid) - создать копию контекста по contextid. Вернёт имя копии
+- vkrpg.contexts.create\_context\_copy(contextid) - создать копию контекста по contextid. Вернёт имя копии и объект копии
 - vkrpg.contexts.enable\_context(vkid, contextid, obj\_for_event=None) - включить созданый контекст с именем contextid для vkid 
 - vkrpg.contexts.get\_contextid\_by_vkid(vkid) - получить включённый контекст у vkid
 - vkrpg.contexts.get_context(contextid) - получить объект контекста по его имени
