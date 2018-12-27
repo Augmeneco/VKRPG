@@ -17,7 +17,7 @@ from io import StringIO
 import contextlib
 import sys
 
-lanode.log_print('VKRPG v0.4 by Lanode (from Augmeneco)')
+lanode.log_print('VKRPG v1.0 by Lanode (from Augmeneco)')
 
 
 # class VKRPG:
