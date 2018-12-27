@@ -9,6 +9,7 @@ import psycopg2
 import importlib
 import importlib.util
 import random
+from unqlite import UnQLite
 import psycopg2.extras
 from datetime import datetime
 import os
@@ -28,24 +29,27 @@ updates_queue = queue.Queue()
 
 
 def start():
-    lanode.log_print('Инициализация плагинов-скриптов...', 'info')
+    lanode.log_print('Инициализация скриптов...', 'info')
     # for script in filter(lambda x: x.split('.')[-1] == 'py', os.listdir('./scripts')):
     #     exec(open('./scripts/' + script).read())
-    for plugin in [x for x in os.listdir('./scripts/') if not os.path.isdir('./scripts/' + x) or x[-3] == '.py']:
-        spec = importlib.util.spec_from_file_location(plugin.split('.')[0], './scripts/' + plugin)
+    for script in [x for x in os.listdir('./scripts/') if not os.path.isdir('./scripts/' + x) or x[-3] == '.py']:
+        spec = importlib.util.spec_from_file_location(script.split('.')[0], './scripts/' + script)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
-        plugins.plugins_list[plugin[:-3]] = module
+        scripts.scripts_list[script[:-3]] = module
+
+    contexts.context_list = {x.__name__: {'class': x, 'copies': {0: x(0)}} for x in contexts.BaseContext.__subclasses__()}
+    print(contexts.context_list)
 
     for f in events.get_events('on_load'):
         f()
 
     if CONFIG['debug'] is True:
         print(os.path.dirname(__file__))
-        print(plugins.plugins_list)
+        print(scripts.scripts_list)
         print(contexts.context_list)
 
-    lanode.log_print('Инициализация плагинов-скриптов завершена.', 'info')
+    lanode.log_print('Инициализация скриптов завершена.', 'info')
 
     lanode.log_print('Запуск longpoll потока ...', 'info')
     thread_longpoll = threading.Thread(target=longpollserver)
@@ -127,34 +131,30 @@ def start():
                                  ' From: ' + str(msg['from_id']) + ','
                                  ' Text: "' + msg['text'].replace('\n', '\\n') + '"}',
                                  'info')
+                with db.transaction():
+                    if msg['from_id'] not in db:
+                        db[msg['from_id']] = {'settings': {},
+                                              'save': {'context':'MainContext','inventory':{}}}
+                    for f in events.get_events('on_newuser'):
+                        f(msg['from_id'])
 
-                if 'db' in globals():
-                    res = db.read('users', "id='"+str(update['object']['from_id'])+"'")
-                    if res == []:
-                        db.write('users', [(str(update['object']['from_id']), '{}', '{"context":"default","inventory":{"servants":{}}}')])
-                        res = db.read('users', "id='" + str(update['object']['from_id']) + "'")
-                        for f in events.get_events('on_newuser'):
-                            f(msg)
-                    msg['db'] = res[0]
-                else:
-                    if msg['from_id'] not in contexts.users_contexts:
-                        contexts.enable_context(msg['from_id'], 'default')
+                context = contexts.get_context_by_vkid(msg['from_id'])
 
-                if contexts.get_context(contexts.get_contextid_by_vkid(msg['from_id'])) is None:
+                if context is None:
                     lanode.log_print('ERROR: Контекста не существует. Chat: ' + str(msg['peer_id']) + ' From: ' + str(
                         msg['from_id']), 'info')
                     for f in events.get_events('on_contextnotfound'):
                         f(msg, contexts.get_contextid_by_vkid(msg['from_id']))
                     continue
 
-                for f in events.get_events('on_rawmessage', contexts.get_contextid_by_vkid(msg['from_id'])):
-                    f(update)
+
+                context.on_rawmessage(update)
 
                 # if not any(re.match(x['tmplt'], msg['pure_text']) for x in self.chat.cmds_list.values()):
                 #     self.chat.apisay('Такой команды не существует!', msg['peer_id'], msg['id'])
                 #     continue
 
-                for f in events.get_events('on_preparemessage', contexts.get_contextid_by_vkid(msg['from_id'])):
+                for f in events.get_events('on_preparemessage'):
                     msg = f(msg)
                     if msg is False:
                         break
@@ -168,10 +168,9 @@ def start():
                     for q in chat.scanning_users[msg['from_id']].values():
                         q.put(msg)
                 else:
-                    for f in events.get_events('on_message', contexts.get_contextid_by_vkid(msg['from_id'])):
-                        thread = threading.Thread(target=f, args=(msg,))
-                        thread.setName(str(msg['id']))
-                        thread.start()
+                    thread = threading.Thread(target=context.on_message, args=(msg,))
+                    thread.setName(str(msg['id']))
+                    thread.start()
 
 def longpollserver():
     def get_lp_server():
@@ -196,11 +195,11 @@ def longpollserver():
             lp_info = get_lp_server()
 
 
-class Plugins:
-    plugins_list = {}
+class Scripts:
+    scripts_list = {}
 
-    def register_plugin(self, name, obj):
-        self.plugins_list[name] = obj
+    # def register_plugin(self, name, obj):
+    #     self.plugins_list[name] = obj
 
     # def unregister_plugin(self, name):
     #     del self.plugins_list[name]
@@ -213,14 +212,14 @@ class Events:
     #         results.append(f())
     #     return results
 
-    def add_event(self, event, f, contextid='default'):
-        contexts.get_context(contextid)['events'][event].append(f)
+    # def add_event(self, event, f):
+    #     contexts.get_context(contextid)['events'][event].append(f)
+    #
+    # def remove_event(self, event, f):
+    #     contexts.get_context(contextid)['events'][event].remove(f)
 
-    def remove_event(self, event, f, contextid='default'):
-        contexts.get_context(contextid)['events'][event].remove(f)
-
-    def get_events(self, event, contextid='default'):
-        return contexts.get_context(contextid)['events'][event]
+    def get_events(self, event):
+        return [v for x in scripts.scripts_list.values() for n,v in x.__dict__.items() if n == event]
 
     # def add_timerevent(self, t, f, one_time=True):
     #     timer = [f, one_time, time.time(), t]
@@ -240,69 +239,15 @@ class Events:
 class Contexts:
     context_list = {}
 
-    def __init__(self):
-        self.create_context('default')
-        if 'db' in globals():
-            self.users_contexts = {}
-
-    def create_context(self, contextid):
-        context = {'events': {'on_message': [],
-                              'on_rawmessage': [],
-                              'on_preparemessage': [],
-                              'on_load': [],
-                              'on_enablecontext': [],
-                              'on_disablecontext': [],
-                              'on_timer': [],
-                              'on_evloopiter': [],
-                              'on_contextnotfound': []},
-                   'vars': {},
-                   'copies': {},
-                   'childs': {}}
-        self.context_list[contextid] = context
-        return context
-
-    def create_context_copy(self, contextid):
-        if contextid.split(':')[0] in self.context_list:
-            context_copy = {i:copy.deepcopy(self.context_list[contextid][i])
-                            for i in self.context_list[contextid]
-                            if i not in ('childs', 'copies')}
-            copy_id = len(self.context_list[contextid]['copies'])
-            self.context_list[contextid]['copies'][copy_id] = context_copy
-            return contextid + ':' + str(copy_id), context_copy
-
-    def enable_context(self, vkid, contextid, obj_for_event=None):
-        if contextid.split(':')[0] in self.context_list:
-            if 'db' in globals():
-                res = db.read('users', 'id=' + str(vkid))[0]
-                contextid_old = res['save']['context']
-                res['save']['context'] = contextid
-                db.replace('users', 'id=' + str(vkid), "save='" + json.dumps(res['save']) + "' ")
-            else:
-                contextid_old = self.users_contexts[vkid]
-                self.users_contexts[vkid] = contextid
-
-            if self.get_context(contextid_old) is not None:
-                for f in self.get_context(contextid_old)['events']['on_disablecontext']:
-                    f(obj_for_event)
-            for f in self.get_context(contextid)['events']['on_enablecontext']:
-                f(obj_for_event)
-
-            return True
-
-        else:
-            return False
-
     def get_contextid_by_vkid(self, vkid):
-        if 'db' in globals():
-            res = db.read('users', 'id=' + str(vkid))[0]
-            return res['save']['context']
-        else:
-            return self.users_contexts[vkid]
+        with db.transaction():
+            if vkid in db:
+                return db[vkid]['save']['context']
 
     def get_context(self, contextid):
         if contextid.split(':')[0] in self.context_list:
             if len(contextid.split(':')) == 1:
-                return self.context_list[contextid]
+                return self.context_list[contextid]['copies'][0]
             elif len(contextid.split(':')) == 2:
                 if int(contextid.split(':')[1]) in self.context_list[contextid.split(':')[0]]['copies']:
                     return self.context_list[contextid.split(':')[0]]['copies'][int(contextid.split(':')[1])]
@@ -311,18 +256,63 @@ class Contexts:
         else:
             return None
 
-    def remove_context(self, contextid):
-        if contextid.split(':')[0] in self.context_list:
-            if len(contextid.split(':')) == 1:
-                del self.context_list[contextid]
+    def get_context_by_vkid(self, vkid):
+        with db.transaction():
+            if vkid in db:
+                return self.get_context(db[vkid]['save']['context'])
+
+    # def remove_context(self, contextid):
+    #     if contextid.split(':')[0] in self.context_list:
+    #         if len(contextid.split(':')) == 1:
+    #             del self.context_list[contextid]
+    #             return True
+    #         elif len(contextid.split(':')) == 2:
+    #             del self.context_list[contextid.split(':')[0]]['copies'][int(contextid.split(':')[1])]
+    #             return True
+    #         else:
+    #             return False
+    #     else:
+    #         return False
+
+    class BaseContext:
+        def __init__(self, copy_id):
+            self.copy_id = copy_id
+
+        def on_message(self, msg):
+            pass
+
+        def on_rawmessage(self, update):
+            pass
+
+        def on_enablecontext(self, payload):
+            pass
+
+        def on_disablecontext(self, payload):
+            pass
+
+        def enable_for_vkid(self, vkid, payload=None):
+            if self.__class__.__name__ in contexts.context_list:
+                with db.transaction():
+                    contextid_old = db[vkid]['save']['context']
+                    db[vkid]['save']['context'] = self.__class__.__name__ + ':' + str(self.copy_id)
+
+                contexts.get_context(contextid_old).on_disablecontext(payload)
+                self.on_enablecontext(payload)
+
                 return True
-            elif len(contextid.split(':')) == 2:
-                del self.context_list[contextid.split(':')[0]]['copies'][int(contextid.split(':')[1])]
-                return True
+
             else:
                 return False
-        else:
-            return False
+
+        def copy(self):
+            x = contexts.context_list[self.__class__.__name__]
+            x['copies'][len(x['copies'])] = self.__class__(len(x['copies']))
+            return self.__class__.__name__+':'+str(len(x['copies'])-1), x['copies'][len(x['copies'])-1]
+
+        def remove(self):
+            if self.copy_id != 0:
+                x = contexts.context_list[self.__class__.__name__]
+                del x['copies'][self.copy_id]
 
 
 class Chat:
@@ -456,47 +446,114 @@ class Chat:
         return menu_item_select
 
 
-class DB:
-    def __init__(self, conn_str):
-        self.conn = psycopg2.connect(conn_str)
-        self.cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+class Inventory:
+    def __getitem__(self, i):
+        return json.loads(db[i])['inventory']
 
-    def create(self, table, data):
-        self.cursor.execute("""CREATE TABLE """ + table + """
-                                (""" + data + """)""")
-        self.conn.commit()
+    def __setitem__(self, i, c):
+        self.store(i, json.dumps(c))
 
-    def read(self, table, data):
-        sql = "SELECT * FROM " + table + " WHERE " + data
-        self.cursor.execute(sql)
-        return self.cursor.fetchall()
 
-    def write(self, table, data):
-        val = '(' + '%s,' * len(data[0]) + ')'
-        val = val.replace(',)', ')')
-        self.cursor.executemany("INSERT INTO " + table + " VALUES " + val, data)
-        self.conn.commit()
+#
+# class DB:
+#     def __init__(self, conn_str):
+#         self.conn = psycopg2.connect(conn_str)
+#         self.cursor = self.conn.cursor(cursor_factory=psycopg2.extras.DictCursor)
+#
+#     def create(self, table, data):
+#         self.cursor.execute("""CREATE TABLE """ + table + """
+#                                 (""" + data + """)""")
+#         self.conn.commit()
+#
+#     def read(self, table, data):
+#         sql = "SELECT * FROM " + table + " WHERE " + data
+#         self.cursor.execute(sql)
+#         return self.cursor.fetchall()
+#
+#     def write(self, table, data):
+#         val = '(' + '%s,' * len(data[0]) + ')'
+#         val = val.replace(',)', ')')
+#         self.cursor.executemany("INSERT INTO " + table + " VALUES " + val, data)
+#         self.conn.commit()
+#
+#     def replace(self, table, where, setd):
+#         sql = """
+#         UPDATE """ + table + """
+#         SET """ + setd + """
+#         WHERE """ + where
+#         self.cursor.execute(sql)
+#         self.conn.commit()
+#
+#     def remove(self, table, data):
+#         sql = "DELETE FROM " + table + " WHERE " + data
+#         self.cursor.execute(sql)
+#
+#         self.conn.commit()
 
-    def replace(self, table, where, setd):
-        sql = """
-        UPDATE """ + table + """
-        SET """ + setd + """ 
-        WHERE """ + where
-        self.cursor.execute(sql)
-        self.conn.commit()
 
-    def remove(self, table, data):
-        sql = "DELETE FROM " + table + " WHERE " + data
-        self.cursor.execute(sql)
+class DB(UnQLite):
+    def __getitem__(self, i):
+        return json.loads(self.fetch(i))
 
-        self.conn.commit()
+    def __setitem__(self, i, c):
+        self.store(i, json.dumps(c))
+
+
+# class DB:
+#     tables = {}
+#     uql_db = UnQLite('./users.uql')
+#
+#     def __init__(self):
+#         self.tables['users'] = self.uql_db.collection('users')
+#         if not self.tables['users'].exists():
+#             self.tables['users'].create()
+#
+#         if CONFIG['debug'] is True:
+#             print(dict(self.uql_db))
+#
+#     def __getitem__(self, i):
+#         if i == 'users':
+#             return self.Table(self, i)
+#         else:
+#             raise KeyError
+#
+#     def transaction(self):
+#         return self.uql_db.transaction()
+#
+#     class Table:
+#         def __init__(self, p, t):
+#             self.parent = p
+#             self.table = t
+#
+#         def decode(self, l):
+#             if isinstance(l, list):
+#                 return [self.decode(x) for x in l]
+#             elif isinstance(l, dict):
+#                 return {x: self.decode(y) for x, y in l}
+#             else:
+#                 return l.decode()
+#
+#         def __getitem__(self, i):
+#             return self.decode(self.parent.tables[self.table].filter(lambda x: x['id'] == i)[0])
+#
+#         def __setitem__(self, i, c):
+#             if self.parent.tables[self.table].filter(lambda x: x['id'] == i)[0] != []:
+#                 self.parent.tables[self.table].update(i, c)
+#             else:
+#                 c['id'] = i
+#                 self.parent.tables[self.table].store(c)
 
 chat = Chat()
 contexts = Contexts()
-plugins = Plugins()
+scripts = Scripts()
 events = Events()
-if CONFIG['standart_db']['use_db'] is True:
-    db = DB('dbname={} user={} password={} host={}'.format(CONFIG['standart_db']['dbname'],
-                                                           CONFIG['standart_db']['user'],
-                                                           CONFIG['standart_db']['password'],
-                                                           CONFIG['standart_db']['host']))
+db = DB('./users.uql')
+
+# db = UnQLite('./users.uql')
+# users = db.collection('users')
+
+# if CONFIG['standart_db']['use_db'] is True:
+#     db = DB('dbname={} user={} password={} host={}'.format(CONFIG['standart_db']['dbname'],
+#                                                            CONFIG['standart_db']['user'],
+#                                                            CONFIG['standart_db']['password'],
+#                                                            CONFIG['standart_db']['host']))
