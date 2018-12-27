@@ -4,10 +4,8 @@ import requests
 import threading
 import time
 import lanode
-import psycopg2
 import importlib
 import importlib.util
-import psycopg2.extras
 import re
 from datetime import datetime
 import os

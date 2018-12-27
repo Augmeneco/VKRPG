@@ -4,18 +4,14 @@ import requests
 import threading
 import time
 import lanode
-import copy
-import psycopg2
 import importlib
 import importlib.util
 import random
 from unqlite import UnQLite
-import psycopg2.extras
 from datetime import datetime
 import os
 import html
 import re
-import sys
 from ruamel.yaml import YAML
 
 
@@ -32,7 +28,7 @@ def start():
     lanode.log_print('Инициализация скриптов...', 'info')
     # for script in filter(lambda x: x.split('.')[-1] == 'py', os.listdir('./scripts')):
     #     exec(open('./scripts/' + script).read())
-    for script in [x for x in os.listdir('./scripts/') if not os.path.isdir('./scripts/' + x) or x[-3] == '.py']:
+    for script in [x for x in os.listdir('./scripts/') if (not os.path.isdir('./scripts/' + x)) and (x[-3:] == '.py')]:
         spec = importlib.util.spec_from_file_location(script.split('.')[0], './scripts/' + script)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
@@ -294,7 +290,9 @@ class Contexts:
             if self.__class__.__name__ in contexts.context_list:
                 with db.transaction():
                     contextid_old = db[vkid]['save']['context']
-                    db[vkid]['save']['context'] = self.__class__.__name__ + ':' + str(self.copy_id)
+                    user = db[vkid]
+                    user['save']['context'] = self.__class__.__name__ + ':' + str(self.copy_id)
+                    db[vkid] = user
 
                 contexts.get_context(contextid_old).on_disablecontext(payload)
                 self.on_enablecontext(payload)
