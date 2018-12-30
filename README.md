@@ -4,6 +4,7 @@ VKRPG является context-event-driven (Контекстно-Событий
 
 Контекст - это окружение состоящее из событий и переменных которые могут устонавливаться для одного или более пользователя. Контексты также могут иметь копии.
 
+Ниже устаревшее и больше не работающее API:
 ## ScriptAPI
 ### EventsAPI
 - vkrpg.events.add_event(event: string, f: function, contextid='default': string) - добавляет функцию f к событию event контекста contextid
