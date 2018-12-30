@@ -11,3 +11,4 @@
 .idea
 vkrpg/config.yml
 users.uql
+*/__pycache__
