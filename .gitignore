@@ -12,3 +12,12 @@
 vkrpg/config.yml
 users.uql
 */__pycache__
+battle_ai.py
+battle_duel.py
+battle_lobby.py
+battle_mission.py
+graal.py
+main.py
+menu_battle.py
+menu_inventory.py
+menu_main.py
