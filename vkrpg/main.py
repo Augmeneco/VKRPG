@@ -1,21 +1,25 @@
+import os
+abspath = os.path.abspath(__file__)
+dname = os.path.dirname(abspath)
+os.chdir(dname)
+import lanode
+lanode.log_print('VKRPG v1.0 by Lanode (from Augmeneco)')
 import queue
 import json
 import requests
 import threading
 import time
-import lanode
 import importlib
 import importlib.util
 import re
 from datetime import datetime
-import os
 import vkrpg
 import html
 from io import StringIO
 import contextlib
 import sys
 
-lanode.log_print('VKRPG v1.0 by Lanode (from Augmeneco)')
+
 
 
 # class VKRPG:

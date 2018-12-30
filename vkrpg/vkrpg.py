@@ -1,9 +1,11 @@
 import queue
 import json
 import requests
+import collections
 import threading
 import time
 import lanode
+import _io
 import importlib
 import importlib.util
 import random
@@ -13,7 +15,10 @@ import os
 import html
 import re
 from ruamel.yaml import YAML
-
+try:
+    import vk_api
+except ImportError:
+    pass
 
 with open('config.yml') as config_file:
     yaml = YAML()
@@ -117,7 +122,9 @@ def start():
                     else:
                         continue
 
-                if (msg['pure_text'].split(' ')[0].lower() in ('debug', 'dbg', 'дбг', 'дебаг')) and (debug_func is not None):
+                if (msg['pure_text'].split(' ')[0].lower() in ('debug', 'dbg', 'дбг', 'дебаг'))\
+                    and (debug_func is not None)\
+                    and (msg['from_id'] in CONFIG['admins']):
                     debug_func(msg)
                     continue
 
@@ -190,6 +197,15 @@ def longpollserver():
         except KeyError:
             lp_info = get_lp_server()
 
+
+try:
+    vk_api
+except NameError:
+    pass
+else:
+    vk_session = vk_api.VkApi(token=CONFIG['token'])
+    vk = vk_session.get_api()
+    lanode.log_print('Бибилиотека vk_api успешно загружена.')
 
 class Scripts:
     scripts_list = {}
@@ -350,17 +366,41 @@ class Chat:
         if self.scanning_users[vkid] == {}:
             del self.scanning_users[vkid]
 
-    def send(self, toho, mess=None, pics=None, torep=None):
-        r = requests.get(
-            'https://api.vk.com/method/photos.getMessagesUploadServer?access_token={}&v=5.68'.format(CONFIG['token'])).json()
-        for pic in pics:
-            ret = requests.post(r['response']['upload_url'], files={'file': pic}).json()
-            ret = requests.get('https://api.vk.com/method/photos.saveMessagesPhoto?v=5.68&album_id=-3&server=' + str(
-                ret['server']) + '&photo=' + ret['photo'] + '&hash=' + str(ret['hash']) + '&access_token=' + CONFIG['token']).json()
-        requests.get('https://api.vk.com/method/messages.send?attachment=photo' + str(
-            ret['response'][0]['owner_id']) + '_' + str(
-            ret['response'][0]['id']) + '&message=' + mess + '&v=5.68&peer_id=' + str(
-            toho) + '&access_token=' + str(CONFIG['token']))
+    def send(self, peer_id, text=None, photos=None, forward=None):
+        params = {'v': '5.68', 'peer_id': str(peer_id), 'access_token': CONFIG['token']}
+        if text is not None:
+            params['message'] = text
+        if forward is not None:
+            if not isinstance(forward, collections.Iterable):
+                forward = list([forward])
+            params['forward_messages'] = ','.join([str(x) for x in forward])
+        if photos is not None:
+            if isinstance(photos, _io.BufferedReader):
+                photos = list([photos])
+
+            uploadserver_info = requests.get(
+                'https://api.vk.com/method/photos.getMessagesUploadServer?peer_id={}&access_token={}&v=5.68'.format(
+                    peer_id, CONFIG['token'])).json()['response']
+
+            uploaded_photos_info = []
+            for photo in photos:
+                r = requests.post(uploadserver_info['upload_url'], files={'photo': photo}).json()
+                uploaded_photos_info.append(r)
+
+            uploaded_photos_ids = []
+            for photo_info in uploaded_photos_info:
+                r = requests.post('https://api.vk.com/method/photos.saveMessagesPhoto',
+                                  data={'album_id': '-3',
+                                        'server': photo_info['server'],
+                                        'photo': photo_info['photo'],
+                                        'hash': photo_info['hash'],
+                                        'v': '5.68',
+                                        'access_token': CONFIG['token']}).json()
+                uploaded_photos_ids.append('photo'+str(r['response'][0]['owner_id'])+'_'+str(r['response'][0]['id']))
+
+            params['attachment'] = ','.join(uploaded_photos_ids)
+
+        requests.post('https://api.vk.com/method/messages.send', data=params)
 
     def apisay(self, text, toho):
         param = {'v': '5.68', 'peer_id': toho, 'access_token': CONFIG['token'], 'message': text}
@@ -371,21 +411,6 @@ class Chat:
         #                  ' Text: "' + text.replace('\n', '\\n') + '"}',
         #                  'info')
         return result
-
-    def sendpic(self, pic, mess, toho):
-        ret = requests.get(
-            'https://api.vk.com/method/photos.getMessagesUploadServer?access_token={access_token}&v=5.68'.format(
-                access_token=CONFIG['token'])).json()
-        with open(pic, 'rb') as f:
-            ret = requests.post(ret['response']['upload_url'], files={'file1': f}).text
-        ret = json.loads(ret)
-        ret = requests.get('https://api.vk.com/method/photos.saveMessagesPhoto?v=5.68&album_id=-3&server=' + str(
-            ret['server']) + '&photo=' + ret['photo'] + '&hash=' + str(ret['hash']) + '&access_token=' + CONFIG['token']).text
-        ret = json.loads(ret)
-        requests.get('https://api.vk.com/method/messages.send?attachment=photo' + str(
-            ret['response'][0]['owner_id']) + '_' + str(
-            ret['response'][0]['id']) + '&message=' + mess + '&v=5.68&peer_id=' + str(
-            toho) + '&access_token=' + str(CONFIG['token']))
 
     def actions_display(self, actions_list, peer_id, title=None):
         if title is None:
