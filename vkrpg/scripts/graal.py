@@ -45,7 +45,7 @@ class GraalContext(vkrpg.contexts.BaseContext):
                        Уровень здоровья: '+str(servlist[2])+'\n\
                        Наносимый урон: '+str(servlist[4])+'\n\
                        Наносимый урон Небесным Фантазмом: '+str(servlist[6])
-            vkrpg.chat.apisay(out, msg['peer_id'])
+            vkrpg.chat.send(msg['peer_id'], text=out, photos=[open('data/servants/' + servlist[8], 'rb')])
 
             with vkrpg.db.transaction():
                 user = vkrpg.db[msg['peer_id']]

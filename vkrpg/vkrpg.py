@@ -40,7 +40,6 @@ def start():
         scripts.scripts_list[script[:-3]] = module
 
     contexts.context_list = {x.__name__: {'class': x, 'copies': {0: x(0)}} for x in contexts.BaseContext.__subclasses__()}
-    print(contexts.context_list)
 
     for f in events.get_events('on_load'):
         f()
@@ -138,8 +137,8 @@ def start():
                     if msg['from_id'] not in db:
                         db[msg['from_id']] = {'settings': {},
                                               'save': {'context':'MainContext','inventory':{}}}
-                    for f in events.get_events('on_newuser'):
-                        f(msg['from_id'])
+                        for f in events.get_events('on_newuser'):
+                            f(msg['from_id'])
 
                 context = contexts.get_context_by_vkid(msg['from_id'])
 
@@ -206,6 +205,7 @@ else:
     vk_session = vk_api.VkApi(token=CONFIG['token'])
     vk = vk_session.get_api()
     lanode.log_print('Бибилиотека vk_api успешно загружена.')
+
 
 class Scripts:
     scripts_list = {}
@@ -375,8 +375,8 @@ class Chat:
                 forward = list([forward])
             params['forward_messages'] = ','.join([str(x) for x in forward])
         if photos is not None:
-            if isinstance(photos, _io.BufferedReader):
-                photos = list([photos])
+            # if isinstance(photos, _io.BufferedReader):
+            #     photos = list([photos])
 
             uploadserver_info = requests.get(
                 'https://api.vk.com/method/photos.getMessagesUploadServer?peer_id={}&access_token={}&v=5.68'.format(

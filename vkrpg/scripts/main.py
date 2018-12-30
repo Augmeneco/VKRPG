@@ -7,6 +7,7 @@ import sqlite3
 
 
 def on_newuser(vkid):
+    print('BLYAAAAAAAA')
     with vkrpg.db.transaction():
         inventory = vkrpg.db[vkid]
         inventory['save']['inventory']['servants'] = {}
@@ -93,7 +94,8 @@ class MainContext(vkrpg.contexts.BaseContext):
                        Уровень здоровья: '+str(servlist[2])+'\n\
                        Наносимый урон: '+str(servlist[4])+'\n\
                        Наносимый урон Небесным Фантазмом: '+str(servlist[6])
-            vkrpg.chat.apisay(out, msg['peer_id'])
+            #vkrpg.chat.apisay(out, msg['peer_id'])
+            vkrpg.chat.send(msg['peer_id'], text=out, photos=[open('data/servants/'+servlist[8], 'rb')])
 
             # vkrpg.db.cursor.execute("SELECT save FROM users WHERE id=" + str(msg['from_id']))
             # save = vkrpg.db.cursor.fetchone()[0]

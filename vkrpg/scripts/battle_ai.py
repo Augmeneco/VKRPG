@@ -10,9 +10,12 @@ class BattleAIContext(vkrpg.contexts.BaseContext):
 
     def on_message(self, msg):
         enemy_for_atk = vkrpg.chat.actions_select([{'title': x, 'one_time': True} for x in self.ai_servants], msg)
+        # damage = random.randint(100, self.player_servants[])
         vkrpg.chat.apisay('[ System ] Сервант противника '+str(enemy_for_atk)+' атакован', msg['peer_id'])
+
         player_for_atk = random.choice(list(x[0] for x in enumerate(self.player_servants)))
         vkrpg.chat.apisay('[ System ] Сервант игрока ' + str(player_for_atk) + ' атакован', msg['peer_id'])
+
         vkrpg.chat.actions_display([{'title': x, 'one_time': True} for x in self.ai_servants], msg['peer_id'],
                                    '[ System ] Выберите слугу противника для атаки')
 
