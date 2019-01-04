@@ -12,6 +12,10 @@
 vkrpg/config.yml
 users.uql
 */__pycache__
+vkrpg/scripts/*
+vkrpg/data/*
+
+!*/.gitkeep
 
 vkrpg/scripts/battle_ai.py
 vkrpg/scripts/battle_duel.py
@@ -25,3 +29,4 @@ vkrpg/scripts/menu_main.py
 vkrpg/data/fate.db
 vkrpg/data/text.json
 vkrpg/data/servants
+vkrpg/data/servants.db

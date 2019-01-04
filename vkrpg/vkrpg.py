@@ -443,28 +443,23 @@ class Chat:
             if len(actions_list) + 1 >= int(msg['pure_text']):
                 menu_item_select = int(msg['pure_text']) - 1
             else:
-                out = '[ System ] Такого пункта меню не существует. Напиши "меню" чтоб узнать какие пункты существуют.'
-                chat.apisay(out, msg['peer_id'])
                 return
         elif 'payload' in msg:
-            menu_item_select = int(json.loads(msg['payload'])['button'])
+            if 'button' in json.loads(msg['payload']):
+                menu_item_select = int(json.loads(msg['payload'])['button'])
         else:
             menu_item = list([item for item in actions_list if item['title'].lower() == msg['pure_text'].lower()])
             if menu_item != []:
                 menu_item_select = list([idx for idx, item in enumerate(actions_list)
                                          if item['title'].lower() == msg['pure_text'].lower()])[0]
             else:
-                out = '[ System ] Такого пункта меню не существует. Напиши "меню" чтоб узнать какие пункты существуют.'
-                chat.apisay(out, msg['peer_id'])
                 return
-        print(actions_list)
-        print(menu_item_select)
         if (msg['chat_type'] == 'private') and ('one_time' in actions_list[menu_item_select]):
             if actions_list[menu_item_select]['one_time']:
                 lanode.vk_api('messages.send', {'v': '5.92',
                                                 'peer_id': msg['peer_id'],
                                                 'random_id': random.randint(0, 9223372036854775807),
-                                                'message': 'Выполняю команду '+str(menu_item_select),
+                                                'message': 'ᅠ',
                                                 'keyboard': json.dumps({"buttons":[],"one_time":True})}, CONFIG['token'])
         return menu_item_select
 
