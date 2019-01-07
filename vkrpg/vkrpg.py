@@ -177,7 +177,9 @@ def start():
 def longpollserver():
     def get_lp_server():
         lp_info = requests.post('https://api.vk.com/method/groups.getLongPollServer',
-                                data={'access_token': CONFIG['token'], 'v': '5.80', 'group_id': '171173780'})
+                                data={'access_token': CONFIG['token'], 'v': '5.80', 'group_id': CONFIG['group_id']})
+        if CONFIG['debug']:
+            print(lp_info.text)
         lp_info = json.loads(lp_info.text)['response']
         lanode.log_print('Новая информация о longpoll сервере успешно получена','info')
         return lp_info
@@ -310,7 +312,8 @@ class Contexts:
                     user['save']['context'] = self.__class__.__name__ + ':' + str(self.copy_id)
                     db[vkid] = user
 
-                contexts.get_context(contextid_old).on_disablecontext(payload)
+                if contexts.get_context(contextid_old) is not None:
+                    contexts.get_context(contextid_old).on_disablecontext(payload)
                 self.on_enablecontext(payload)
 
                 return True
@@ -432,11 +435,12 @@ class Chat:
                                                           'payload': '{\"button\": \"' + str(x[0]) + '\"}',
                                                           'label': x[1]['title']
                                                       }} for x in menu_list_chunk]))
-            lanode.vk_api('messages.send', {'v': '5.92',
+            r = lanode.vk_api('messages.send', {'v': '5.92',
                                             'peer_id': peer_id,
                                             'random_id': random.randint(0, 9223372036854775807),
                                             'message': out,
                                             'keyboard': json.dumps(keyboard_obj, ensure_ascii=False)}, CONFIG['token'])
+            print(r)
 
     def actions_select(self, actions_list, msg):
         if msg['pure_text'].isdigit():
@@ -511,7 +515,7 @@ class Inventory:
 
 class DB(UnQLite):
     def __getitem__(self, i):
-        return json.loads(self.fetch(i))
+        return json.loads(self.fetch(i).decode())
 
     def __setitem__(self, i, c):
         self.store(i, json.dumps(c))
