@@ -1,3 +1,5 @@
+# TODO: Счётчики принятых и отправленных сообщений
+
 import queue
 import json
 import requests
@@ -20,9 +22,12 @@ try:
 except ImportError:
     pass
 
-with open('config.yml') as config_file:
+with open('config.yml', errors='ignore') as config_file:
     yaml = YAML()
     CONFIG = yaml.load(config_file.read())
+
+counters = {'msg_send': {'all': 0, 'hour': 0, 'hour_peer': {}},
+            'msg_recv': {'all': 0, 'hour': 0, 'hour_peer': {}}}
 
 debug_func = lambda x: x
 
@@ -55,8 +60,15 @@ def start():
     thread_longpoll = threading.Thread(target=longpollserver)
     thread_longpoll.start()
 
+    hour_timer = datetime.now().hour
     while True:
         time.sleep(10/1000000.0)
+
+        if datetime.now().hour > hour_timer:
+            counters['msg_recv']['hour'] = 0
+            counters['msg_send']['hour'] = 0
+            counters['msg_recv']['hour_peer'] = {}
+            counters['msg_send']['hour_peer'] = {}
 
         for f in events.get_events('on_evloopiter'):
             f()
@@ -90,6 +102,13 @@ def start():
 
             if update['type'] == 'message_new':
                 msg = update['object']
+
+                counters['msg_recv']['all'] += 1
+                counters['msg_recv']['hour'] += 1
+                if msg['peer_id'] in counters['msg_recv']['hour_peer']:
+                    counters['msg_recv']['hour_peer'][msg['peer_id']] += 1
+                else:
+                    counters['msg_recv']['hour_peer'][msg['peer_id']] = 0
 
                 if (msg['peer_id'] > 0) and (msg['peer_id'] < 2000000000):
                     chat_type = 'private'
@@ -133,12 +152,12 @@ def start():
                                  ' From: ' + str(msg['from_id']) + ','
                                  ' Text: "' + msg['text'].replace('\n', '\\n') + '"}',
                                  'info')
-                with db.transaction():
-                    if msg['from_id'] not in db:
-                        db[msg['from_id']] = {'settings': {},
-                                              'save': {'context':'MainContext','inventory':{}}}
-                        for f in events.get_events('on_newuser'):
-                            f(msg['from_id'])
+                # with db.transaction():
+                #     if msg['from_id'] not in db:
+                #         db[msg['from_id']] = {'settings': {},
+                #                               'save': {'context':'MainContext','inventory':{}}}
+                #         for f in events.get_events('on_newuser'):
+                #             f(msg['from_id'])
 
                 context = contexts.get_context_by_vkid(msg['from_id'])
 
@@ -170,6 +189,7 @@ def start():
                     for q in chat.scanning_users[msg['from_id']].values():
                         q.put(msg)
                 else:
+                    print(id(msg))
                     thread = threading.Thread(target=context.on_message, args=(msg,))
                     thread.setName(str(msg['id']))
                     thread.start()
@@ -197,6 +217,9 @@ def longpollserver():
                 updates_queue.put(update)
         except KeyError:
             lp_info = get_lp_server()
+
+def stat():
+    print()
 
 
 try:
@@ -254,6 +277,7 @@ class Contexts:
     context_list = {}
 
     def get_contextid_by_vkid(self, vkid):
+        #lanode.vk_api('storage')
         with db.transaction():
             if vkid in db:
                 return db[vkid]['save']['context']
@@ -335,6 +359,8 @@ class Contexts:
 class Chat:
     scanning_users = {}
 
+    hide_keyboard_in_peers = []
+
     def scan(self, vkid):
         t_id = int(threading.current_thread().getName())
         self.scanning_users[vkid] = {}
@@ -403,7 +429,20 @@ class Chat:
 
             params['attachment'] = ','.join(uploaded_photos_ids)
 
-        requests.post('https://api.vk.com/method/messages.send', data=params)
+        if peer_id in self.hide_keyboard_in_peers:
+            params['keyboard'] = json.dumps({"buttons":[],"one_time":True})
+            self.hide_keyboard_in_peers.remove(peer_id)
+
+        r = requests.post('https://api.vk.com/method/messages.send', data=params).json()
+        if 'response' in r:
+            counters['msg_send']['all'] += 1
+            counters['msg_send']['hour'] += 1
+            if peer_id in counters['msg_send']['hour_peer']:
+                counters['msg_send']['hour_peer'][peer_id] += 1
+            else:
+                counters['msg_send']['hour_peer'][peer_id] = 0
+        else:
+            print(r)
 
     def apisay(self, text, toho):
         param = {'v': '5.68', 'peer_id': toho, 'access_token': CONFIG['token'], 'message': text}
@@ -415,39 +454,42 @@ class Chat:
         #                  'info')
         return result
 
-    def actions_display(self, actions_list, peer_id, title=None):
+    def actions_display(self, actions_list, peer_id, title=None, disabled_actions=()):
         if title is None:
             out = '[ System ] Выберете действие (цифра, название или кнопка):\n'
         else:
             out = title + '\n'
 
         for idx, item in enumerate(actions_list):
-            out += str(idx + 1) + ' - ' + item['title'] + '\n'
+            if idx not in disabled_actions:
+                out += '{} - {}\n'.format(str(idx + 1), item['title'])
+            else:
+                out += '# {} - {} #\n'.format(str(idx + 1), item['title'])
 
         if peer_id > 2000000000:
             chat.apisay(out, peer_id)
         elif (peer_id > 0) and (peer_id < 2000000000):
             keyboard_obj = {'one_time': False, 'buttons': []}
             for menu_list_chunk in lanode.chunks(list(enumerate(actions_list)), 4):
-                keyboard_obj['buttons'].append(list([{'color': 'default',
+                keyboard_obj['buttons'].append(list([{'color': 'default' if x[0] not in disabled_actions else 'negative',
                                                       'action': {
                                                           'type': 'text',
                                                           'payload': '{\"button\": \"' + str(x[0]) + '\"}',
-                                                          'label': x[1]['title']
+                                                          'label': x[1]['title'] if x[0] not in disabled_actions else '# {} #'.format(x[1]['title']),
                                                       }} for x in menu_list_chunk]))
             r = lanode.vk_api('messages.send', {'v': '5.92',
-                                            'peer_id': peer_id,
-                                            'random_id': random.randint(0, 9223372036854775807),
-                                            'message': out,
-                                            'keyboard': json.dumps(keyboard_obj, ensure_ascii=False)}, CONFIG['token'])
+                                                'peer_id': peer_id,
+                                                'random_id': random.randint(0, 9223372036854775807),
+                                                'message': out,
+                                                'keyboard': json.dumps(keyboard_obj, ensure_ascii=False)}, CONFIG['token'])
             print(r)
 
-    def actions_select(self, actions_list, msg):
+    def actions_select(self, actions_list, msg, disabled_actions=()):
         if msg['pure_text'].isdigit():
             if len(actions_list) + 1 >= int(msg['pure_text']):
                 menu_item_select = int(msg['pure_text']) - 1
             else:
-                return
+                return None
         elif 'payload' in msg:
             if 'button' in json.loads(msg['payload']):
                 menu_item_select = int(json.loads(msg['payload'])['button'])
@@ -457,15 +499,19 @@ class Chat:
                 menu_item_select = list([idx for idx, item in enumerate(actions_list)
                                          if item['title'].lower() == msg['pure_text'].lower()])[0]
             else:
-                return
+                return None
+
         if (msg['chat_type'] == 'private') and ('one_time' in actions_list[menu_item_select]):
             if actions_list[menu_item_select]['one_time']:
-                lanode.vk_api('messages.send', {'v': '5.92',
-                                                'peer_id': msg['peer_id'],
-                                                'random_id': random.randint(0, 9223372036854775807),
-                                                'message': 'ᅠ',
-                                                'keyboard': json.dumps({"buttons":[],"one_time":True})}, CONFIG['token'])
-        return menu_item_select
+                self.actions_hide(msg['peer_id'])
+
+        if menu_item_select in disabled_actions:
+            return -menu_item_select
+        else:
+            return menu_item_select
+
+    def actions_hide(self, peer_id):
+        self.hide_keyboard_in_peers.append(peer_id)
 
 
 class Inventory:
@@ -519,7 +565,20 @@ class DB(UnQLite):
 
     def __setitem__(self, i, c):
         self.store(i, json.dumps(c))
-
+#
+# class DB:
+#     def __init__(self, db_file, parent):
+#         self.db_file = db_file
+#         self.parent = parent
+#
+#     def __getitem__(self, i):
+#         with open('users.vrdb') as db_file:
+#             for line in db_file:
+#                 if int(line.split(' ', 1)[0]) == i:
+#                     return json.loads(line.split(' ', 1)[1])
+#
+#     def __setitem__(self, i, c):
+#         self.store(i, json.dumps(c))
 
 # class DB:
 #     tables = {}

@@ -339,9 +339,9 @@ def debug(msg):
         try:
             exec(code, globals(), locals())
         except Exception as e:
-            vkrpg.chat.apisay(str(e), msg['peer_id'])
+            vkrpg.chat.send(msg['peer_id'], text=str(e))
 
-        vkrpg.chat.apisay(s.getvalue(), msg['peer_id'])
+        vkrpg.chat.send(msg['peer_id'], text=s.getvalue())
 
 
 if __name__ == "__main__":
